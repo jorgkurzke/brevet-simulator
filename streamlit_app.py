@@ -156,7 +156,19 @@ def sanitize_gpx(df):
             df["ele"] = 0
         else:
             df["ele"] = df["ele"].astype(float)
-            df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
+           # Eigene Interpolation ohne Pandas-Bug
+ele = df["ele"].to_numpy()
+
+# NaNs durch lineare Interpolation ersetzen
+mask = np.isnan(ele)
+if mask.any():
+    ele[mask] = np.interp(
+        np.flatnonzero(mask),
+        np.flatnonzero(~mask),
+        ele[~mask]
+    )
+
+df["ele"] = ele
 
     # --- ZEIT KOMPLETT NEU ERZEUGEN ---
     # Wir ignorieren alle GPX-Zeitstempel, weil sie kaputt sind
