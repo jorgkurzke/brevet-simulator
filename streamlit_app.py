@@ -83,67 +83,6 @@ uploaded_files = st.file_uploader(
 )
 
 colors = ["red", "blue", "green", "purple", "orange", "black", "brown"]
-# ---------------------------------------------------------
-# Hauptlogik – WICHTIG: Diese Bedingung muss existieren!
-# ---------------------------------------------------------
-
-if uploaded_files and len(uploaded_files) > 0:
-
-    st.write("DEBUG: Dateien erkannt:", [f.name for f in uploaded_files])
-
-    track_stats = []
-    m = None
-
-    for idx, file in enumerate(uploaded_files):
-        gpx = gpxpy.parse(file)
-        color = colors[idx % len(colors)]
-
-        all_points = []
-        for track in gpx.tracks:
-            for segment in track.segments:
-                for p in segment.points:
-                    all_points.append((p.latitude, p.longitude, p.elevation, p.time))
-
-        if not all_points:
-            st.warning(f"⚠️ Keine Punkte in {file.name}")
-            continue
-
-        df = compute_stats(all_points)
-        df = apply_breaks(df, pause_df)
-        controls = compute_controls(df, kontroll_df)
-
-        track_stats.append((file.name, df, controls))
-
-        if m is None:
-            m = folium.Map(location=[df.lat.iloc[0], df.lon.iloc[0]], zoom_start=11)
-
-        folium.PolyLine(
-            df[["lat", "lon"]].values,
-            color=color,
-            weight=4,
-            opacity=0.9,
-            tooltip=file.name
-        ).add_to(m)
-
-        folium.Marker(
-            [df.lat.iloc[0], df.lon.iloc[0]],
-            popup=f"{file.name} Start"
-        ).add_to(m)
-        folium.Marker(
-            [df.lat.iloc[-1], df.lon.iloc[-1]],
-            popup=f"{file.name} Ziel"
-        ).add_to(m)
-
-    # Karte anzeigen
-    st.subheader("🗺️ Karte")
-    html(m._repr_html_(), height=600)
-
-    # Restliche Auswertungen …
-    # (dein bestehender Code bleibt unverändert)
-
-else:
-    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
-
 
 # ---------------------------------------------------------
 # Hilfsfunktionen
@@ -197,14 +136,11 @@ def speed_from_power(power, slope, mass, cda, crr, headwind):
 
 
 def sanitize_gpx(df):
-    """Entfernt NaN, Inf, doppelte Punkte, glättet Höhenmeter."""
     df = df.copy()
 
-    # Höhenmeter glätten
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
     df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
-    # Doppelte Punkte entfernen
     df = df.loc[~((df["lat"].diff() == 0) & (df["lon"].diff() == 0))]
 
     return df.reset_index(drop=True)
@@ -214,7 +150,6 @@ def compute_stats(points):
     df = pd.DataFrame(points, columns=["lat", "lon", "ele", "time"])
     df = sanitize_gpx(df)
 
-    # Distanz robust
     df["dist"] = np.sqrt(
         (df["lat"].diff() * 111_320) ** 2 +
         (df["lon"].diff() * 40075_000 * np.cos(np.radians(df["lat"])) / 360) ** 2
@@ -223,13 +158,11 @@ def compute_stats(points):
     df.loc[df["dist"] < 0.01, "dist"] = 0
     df["cum_dist"] = df["dist"].cumsum()
 
-    # Steigung robust
     df["ele_diff"] = df["ele"].diff().fillna(0)
     df["slope"] = df["ele_diff"] / df["dist"].replace(0, np.nan)
     df["slope"] = df["slope"].replace([np.inf, -np.inf], 0).fillna(0)
     df["slope"] = df["slope"].clip(-0.3, 0.3)
 
-    # Wind
     wind_components = [0.0]
     for i in range(1, len(df)):
         w = wind_effect(
@@ -240,7 +173,6 @@ def compute_stats(points):
         wind_components.append(w)
     df["wind_mps"] = wind_components
 
-    # Geschwindigkeit
     mass = weight + bike_weight
     speeds = []
     for _, row in df.iterrows():
@@ -259,11 +191,199 @@ def compute_stats(points):
     df["speed_mps"] = speeds
     df["speed_kmh"] = df["speed_mps"] * 3.6
 
-    # Zeit robust
     df["time_s"] = df["dist"] / df["speed_mps"].replace(0, np.nan)
     df["time_s"] = df["time_s"].replace([np.inf, -np.inf], 0).fillna(0)
     df.loc[df["time_s"] < 0, "time_s"] = 0
     df["cum_time_s"] = df["time_s"].cumsum()
 
-    # ACP
-    df["acp_limit_s"] = df["cum_dist"].apply
+    df["acp_limit_s"] = df["cum_dist"].apply(lambda x: acp_control_time(x / 1000))
+
+    df["sim_clock"] = df["cum_time_s"].apply(lambda s: start_dt + timedelta(seconds=s))
+    df["acp_deadline"] = df["acp_limit_s"].apply(lambda s: start_dt + timedelta(seconds=s))
+
+    return df
+
+
+def apply_breaks(df, pause_df):
+    df = df.copy()
+    df["break_s"] = 0
+    for _, row in pause_df.iterrows():
+        km_break = row["km"]
+        dur_s = row["Dauer_min"] * 60
+        idx = df.index[df["cum_dist"] >= km_break * 1000]
+        if len(idx) > 0:
+            df.loc[idx[0]:, "break_s"] += dur_s
+    df["cum_break_s"] = df["break_s"].cumsum()
+    df["cum_time_with_break_s"] = df["cum_time_s"] + df["cum_break_s"]
+    return df
+
+
+def compute_controls(df, kontroll_df):
+    controls = []
+    for _, row in kontroll_df.iterrows():
+        km = row["km"]
+        name = row["Name"]
+        idx = df.index[df["cum_dist"] >= km * 1000]
+        if len(idx) == 0:
+            continue
+        i = idx[0]
+        controls.append({
+            "km": km,
+            "Name": name,
+            "sim_time_s": df.loc[i, "cum_time_with_break_s"],
+            "acp_limit_s": df.loc[i, "acp_limit_s"]
+        })
+    return pd.DataFrame(controls)
+
+# ---------------------------------------------------------
+# Hauptlogik
+# ---------------------------------------------------------
+if uploaded_files and len(uploaded_files) > 0:
+
+    track_stats = []
+    m = None
+
+    for idx, file in enumerate(uploaded_files):
+        gpx = gpxpy.parse(file)
+        color = colors[idx % len(colors)]
+
+        all_points = []
+        for track in gpx.tracks:
+            for segment in track.segments:
+                for p in segment.points:
+                    all_points.append((p.latitude, p.longitude, p.elevation, p.time))
+
+        if not all_points:
+            st.warning(f"⚠️ Keine Punkte in {file.name}")
+            continue
+
+        df = compute_stats(all_points)
+        df = apply_breaks(df, pause_df)
+        controls = compute_controls(df, kontroll_df)
+
+        track_stats.append((file.name, df, controls))
+
+        if m is None:
+            m = folium.Map(location=[df.lat.iloc[0], df.lon.iloc[0]], zoom_start=11)
+
+        folium.PolyLine(
+            df[["lat", "lon"]].values,
+            color=color,
+            weight=4,
+            opacity=0.9,
+            tooltip=file.name
+        ).add_to(m)
+
+        folium.Marker(
+            [df.lat.iloc[0], df.lon.iloc[0]],
+            popup=f"{file.name} Start"
+        ).add_to(m)
+        folium.Marker(
+            [df.lat.iloc[-1], df.lon.iloc[-1]],
+            popup=f"{file.name} Ziel"
+        ).add_to(m)
+
+    st.subheader("🗺️ Karte")
+    html(m._repr_html_(), height=600)
+
+    st.subheader("📊 Tracks, Profile & ACP-Check")
+
+    for name, df, controls in track_stats:
+        st.markdown(f"### {name}")
+
+        total_dist = df["cum_dist"].iloc[-1] / 1000
+        total_up = df.ele.diff().clip(lower=0).sum()
+        total_down = -df.ele.diff().clip(upper=0).sum()
+        total_time_h = df["cum_time_with_break_s"].iloc[-1] / 3600
+        acp_total_h = df["acp_limit_s"].iloc[-1] / 3600
+
+        st.write(f"**Distanz:** {total_dist:.1f} km")
+        st.write(f"**Höhenmeter bergauf:** {total_up:.0f} m")
+        st.write(f"**Höhenmeter bergab:** {total_down:.0f} m")
+        st.write(f"**Gesamtzeit inkl. Pausen:** {total_time_h:.2f} h")
+        st.write(f"**ACP-Zeitlimit:** {acp_total_h:.2f} h")
+
+        if total_time_h <= acp_total_h:
+            st.success("✔️ Brevet liegt innerhalb des ACP-Zeitlimits.")
+        else:
+            st.error("❌ Brevet liegt außerhalb des ACP-Zeitlimits.")
+
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(df["cum_dist"] / 1000, df["ele"], color="black")
+        ax.set_xlabel("Distanz (km)")
+        ax.set_ylabel("Höhe (m)")
+        ax.set_title(f"Höhenprofil – {name}")
+        st.pyplot(fig)
+
+        if not controls.empty:
+            controls["sim_clock"] = controls["sim_time_s"].apply(
+                lambda s: start_dt + timedelta(seconds=s)
+            )
+            controls["acp_deadline"] = controls["acp_limit_s"].apply(
+                lambda s: start_dt + timedelta(seconds=s)
+            )
+            st.write("**Kontrollpunkte:**")
+            st.dataframe(controls)
+
+    with BytesIO() as buffer:
+        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+            for name, df, controls in track_stats:
+                df.to_excel(writer, sheet_name=(name[:31] + "_Track"), index=False)
+                if not controls.empty:
+                    controls.to_excel(writer, sheet_name=(name[:31] + "_CP"), index=False)
+        buffer.seek(0)
+        st.download_button(
+            "📥 Excel exportieren",
+            data=buffer,
+            file_name="brevet_simulation.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    pdf_buffer = BytesIO()
+    c = canvas.Canvas(pdf_buffer, pagesize=A4)
+    width, height = A4
+
+    for name, df, controls in track_stats:
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, height - 40, f"Track: {name}")
+
+        total_dist = df["cum_dist"].iloc[-1] / 1000
+        total_time_h = df["cum_time_with_break_s"].iloc[-1] / 3600
+        acp_total_h = df["acp_limit_s"].iloc[-1] / 3600
+
+        c.setFont("Helvetica", 11)
+        c.drawString(40, height - 70, f"Distanz: {total_dist:.1f} km")
+        c.drawString(40, height - 90, f"Zeit inkl. Pausen: {total_time_h:.2f} h")
+        c.drawString(40, height - 110, f"ACP-Zeitlimit: {acp_total_h:.2f} h")
+
+        y = height - 140
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(40, y, "Kontrollpunkte:")
+        y -= 20
+        c.setFont("Helvetica", 10)
+        if not controls.empty:
+            for _, row in controls.iterrows():
+                line = (
+                    f"{row['Name']} @ {row['km']} km – "
+                    f"Sim: {start_dt + timedelta(seconds=row['sim_time_s'])} – "
+                    f"ACP: {start_dt + timedelta(seconds=row['acp_limit_s'])}"
+                )
+                c.drawString(40, y, line)
+                y -= 15
+                if y < 60:
+                    c.showPage()
+                    y = height - 60
+        c.showPage()
+
+    c.save()
+    pdf_buffer.seek(0)
+
+    st.download_button(
+        "📥 PDF exportieren",
+        data=pdf_buffer,
+        file_name="brevet_simulation.pdf",
+        mime="application/pdf"
+    )
+
+else:
+    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
