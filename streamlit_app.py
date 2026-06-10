@@ -371,8 +371,8 @@ if uploaded_files:
        if "control_points" not in st.session_state:
        st.session_state["control_points"] = []
        control_points = st.session_state["control_points"]
-
-# Pausenpunkte sicherstellen
+    
+    # Pausenpunkte sicherstellen
       if "pauses" not in st.session_state:
       st.session_state["pauses"] = []
       pauses = st.session_state["pauses"]
