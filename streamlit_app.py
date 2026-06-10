@@ -367,6 +367,20 @@ if uploaded_files:
         st.dataframe(df)
 
         st.subheader("🗺️ Karte")
+       # Kontrollpunkte sicherstellen
+       if "control_points" not in st.session_state:
+       st.session_state["control_points"] = []
+       control_points = st.session_state["control_points"]
+
+# Pausenpunkte sicherstellen
+      if "pauses" not in st.session_state:
+      st.session_state["pauses"] = []
+      pauses = st.session_state["pauses"]
+
+# Karte zeichnen
+show_map(df, control_points, pauses)
+
+
         show_map(df, control_points, pauses)
 
         st.subheader("⛰️ Höhenprofil")
