@@ -138,20 +138,32 @@ def speed_from_power(power, slope, mass, cda, crr, headwind):
 def sanitize_gpx(df):
     df = df.copy()
 
-    # Höhenwerte robust bereinigen
+    # --- Zeit robust bereinigen ---
+    # Manche GPX haben keine Zeitstempel → None → TypeError
+    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+
+    # Wenn ALLE Zeiten fehlen → künstliche Zeit erzeugen
+    if df["time"].isna().all():
+        df["time"] = pd.date_range(
+            start=datetime.now(),
+            periods=len(df),
+            freq="1S"
+        )
+
+    # --- Höhenwerte robust bereinigen ---
     df["ele"] = pd.to_numeric(df["ele"], errors="coerce")  # None → NaN
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
 
-    # Falls ALLE Höhen fehlen → setze 0
     if df["ele"].isna().all():
         df["ele"] = 0
     else:
         df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
-    # Doppelte Punkte entfernen
+    # --- Doppelte Punkte entfernen ---
     df = df.loc[~((df["lat"].diff() == 0) & (df["lon"].diff() == 0))]
 
     return df.reset_index(drop=True)
+
 
 
 
