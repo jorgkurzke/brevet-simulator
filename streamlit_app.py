@@ -155,23 +155,18 @@ def sanitize_gpx(df):
         if df["ele"].isna().all():
             df["ele"] = 0
         else:
-            df["ele"] = df["ele"].astype(float)
-           # Eigene Interpolation ohne Pandas-Bug
-ele = df["ele"].to_numpy()
-
-# NaNs durch lineare Interpolation ersetzen
-mask = np.isnan(ele)
-if mask.any():
-    ele[mask] = np.interp(
-        np.flatnonzero(mask),
-        np.flatnonzero(~mask),
-        ele[~mask]
-    )
-
-df["ele"] = ele
+            # NumPy-Interpolation (um Pandas-Bug zu vermeiden)
+            ele = df["ele"].to_numpy()
+            mask = np.isnan(ele)
+            if mask.any():
+                ele[mask] = np.interp(
+                    np.flatnonzero(mask),
+                    np.flatnonzero(~mask),
+                    ele[~mask]
+                )
+            df["ele"] = ele
 
     # --- ZEIT KOMPLETT NEU ERZEUGEN ---
-    # Wir ignorieren alle GPX-Zeitstempel, weil sie kaputt sind
     df["time"] = pd.date_range(
         start=datetime.now(),
         periods=len(df),
@@ -182,6 +177,7 @@ df["ele"] = ele
     df = df.loc[~((df["lat"].diff() == 0) & (df["lon"].diff() == 0))]
 
     return df.reset_index(drop=True)
+
 
 
 def compute_stats(points):
