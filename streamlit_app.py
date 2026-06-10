@@ -254,14 +254,39 @@ def show_elevation_profile(df: pd.DataFrame):
         st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
+    # Distanz in km (grob, falls keine Distanz vorhanden)
     df["km"] = df.index / 1000
 
+    # Steigung berechnen (in %)
+    df["delta_h"] = df["elevation"].diff()
+    df["delta_km"] = df["km"].diff()
+    df["gradient"] = (df["delta_h"] / (df["delta_km"] * 1000)) * 100
+    df["gradient"] = df["gradient"].fillna(0)
+
+    # Steigung glätten (optional)
+    df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
+
+    # Farbcodierung nach Steigung
+    def gradient_color(g):
+        if g < 2:
+            return "green"
+        elif g < 5:
+            return "yellow"
+        elif g < 8:
+            return "orange"
+        else:
+            return "red"
+
+    df["color"] = df["gradient_smooth"].apply(gradient_color)
+
+    # Altair-Liniensegmente erzeugen
     chart = (
         alt.Chart(df)
-        .mark_line(color="green")
+        .mark_line()
         .encode(
             x=alt.X("km:Q", title="Distanz (km)"),
-            y=alt.Y("elevation:Q", title="Höhe (m)")
+            y=alt.Y("elevation:Q", title="Höhe (m)"),
+            color=alt.Color("color:N", scale=None, legend=None)
         )
         .properties(height=250)
     )
