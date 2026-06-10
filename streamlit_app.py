@@ -202,7 +202,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
-            data=[{"lon": start[0], "lat": start[1]}],
+            data=[{"lon": start[0], "lat": start[1], "name": "Start", "pause_min": 0}],
             get_position="[lon, lat]",
             get_color=[0, 200, 0],
             get_radius=200,
@@ -213,7 +213,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
-            data=[{"lon": end[0], "lat": end[1]}],
+            data=[{"lon": end[0], "lat": end[1], "name": "Ziel", "pause_min": 0}],
             get_position="[lon, lat]",
             get_color=[0, 0, 0],
             get_radius=200,
@@ -229,6 +229,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             target_km = float(cp["km"])
         except:
             continue
+
         nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
         cp_data.append({
             "lon": nearest["lon"],
@@ -236,7 +237,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             "name": cp["name"],
             "pause_min": cp.get("pause_min", 0)
         })
-
 
     if cp_data:
         layers.append(
@@ -258,6 +258,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             target_km = float(p["km"])
         except:
             continue
+
         nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
         pause_data.append({
             "lon": nearest["lon"],
@@ -265,7 +266,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             "name": "Pause",
             "pause_min": p.get("pause_min", 0)
         })
-
 
     if pause_data:
         layers.append(
@@ -278,6 +278,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             )
         )
 
+    # Karte rendern
     view_state = pdk.ViewState(
         latitude=midpoint[0],
         longitude=midpoint[1],
@@ -285,7 +286,17 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         pitch=0,
     )
 
-    st.pydeck_chart(pdk.Deck(layers=layers, initial_view_state=view_state))
+    st.pydeck_chart(
+        pdk.Deck(
+            layers=layers,
+            initial_view_state=view_state,
+            tooltip={
+                "html": "<b>{name}</b><br/>Pause: {pause_min} min",
+                "style": {"color": "white"}
+            }
+        )
+    )
+
 
 
 # ---------------------------------------------------------
