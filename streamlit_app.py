@@ -359,10 +359,37 @@ if uploaded_files and len(uploaded_files) > 0:
             st.write("**Kontrollpunkte:**")
             st.dataframe(controls)
 
+    def safe_sheet_name(name, existing):
+    # Verbotene Zeichen entfernen
+    invalid = ['\\', '/', '?', '*', '[', ']']
+    for c in invalid:
+        name = name.replace(c, '')
+
+    # Leere Namen ersetzen
+    if not name.strip():
+        name = "Sheet"
+
+    # Auf 25 Zeichen kürzen (damit "_Track" + Nummer reinpasst)
+    name = name[:25]
+
+    base = name + "_Track"
+    final = base
+
+    # Doppelte Namen vermeiden
+    counter = 1
+    while final in existing:
+        final = f"{base}_{counter}"
+        counter += 1
+
+    # Excel-Limit 31 Zeichen
+    return final[:31]
+    
     with BytesIO() as buffer:
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            for name, df, controls in track_stats:
-                df.to_excel(writer, sheet_name=(name[:31] + "_Track"), index=False)
+            existing_sheets = set()
+            sheet = safe_sheet_name(name, existing_sheets)
+            existing_sheets.add(sheet)
+            df.to_excel(writer, sheet_name=sheet, index=False)
                 if not controls.empty:
                     controls.to_excel(writer, sheet_name=(name[:31] + "_CP"), index=False)
         buffer.seek(0)
