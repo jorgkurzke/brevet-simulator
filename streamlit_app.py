@@ -57,58 +57,18 @@ st.sidebar.header("⏱ ACP‑Regeln")
 start_time = st.sidebar.time_input("Startzeit")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
 
-# Pausenpunkte (gelb)
-# Pausenpunkte (gelb)
-pause_data = []
-for p in pauses:
 
-    if "km" not in p:
-        continue
-    if p["km"] in (None, "", " "):
-        continue
+# ---------------------------------------------------------
+# INITIALISIERUNG DER KONTROLL- UND PAUSENPUNKTE
+# ---------------------------------------------------------
+if "control_points" not in st.session_state:
+    st.session_state["control_points"] = []
 
-    try:
-        target_km = float(p["km"])
-    except:
-        continue
+if "pauses" not in st.session_state:
+    st.session_state["pauses"] = []
 
-    nearest_idx = (df["km"] - target_km).abs().argmin()
-    nearest = df.iloc[nearest_idx]
-
-    pause_data.append({
-        "lon": nearest["lon"],
-        "lat": nearest["lat"],
-    })
-
-
-# Kontrollpunkte (blau)
-# Kontrollpunkte (blau)
-cp_data = []
-for cp in control_points:
-
-    # km-Feld prüfen
-    if "km" not in cp:
-        continue
-    if cp["km"] in (None, "", " "):
-        continue
-
-    # km in float umwandeln
-    try:
-        target_km = float(cp["km"])
-    except:
-        continue
-
-    # nächsten GPX-Punkt finden
-    nearest_idx = (df["km"] - target_km).abs().argmin()
-    nearest = df.iloc[nearest_idx]
-
-    cp_data.append({
-        "lon": nearest["lon"],
-        "lat": nearest["lat"],
-        "name": cp.get("name", "Kontrollpunkt")
-    })
-
-
+control_points = st.session_state["control_points"]
+pauses = st.session_state["pauses"]
 
 
 # ---------------------------------------------------------
@@ -167,20 +127,14 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         st.warning("Keine GPS-Daten für die Karte.")
         return
 
-    # GPX-Track als Liste von Koordinaten
     path = df.apply(lambda r: [r["lon"], r["lat"]], axis=1).tolist()
-
-    # Start- und Endpunkt
     start = path[0]
     end = path[-1]
-
     midpoint = (df["lat"].mean(), df["lon"].mean())
 
     layers = []
 
-    # ---------------------------------------------------------
-    # GPX-Track (rote Linie)
-    # ---------------------------------------------------------
+    # GPX-Track
     layers.append(
         pdk.Layer(
             "PathLayer",
@@ -192,9 +146,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # ---------------------------------------------------------
-    # Startpunkt (grün)
-    # ---------------------------------------------------------
+    # Startpunkt
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
@@ -205,9 +157,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # ---------------------------------------------------------
-    # Endpunkt (schwarz)
-    # ---------------------------------------------------------
+    # Endpunkt
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
@@ -218,54 +168,52 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # ---------------------------------------------------------
-    # Kontrollpunkte (blau)
-    # ---------------------------------------------------------
-   # Kontrollpunkte (blau)
-cp_data = []
-for cp in control_points:
-    nearest = df.iloc[(df["km"] - cp["km"]).abs().argmin()]
-    cp_data.append({
-        "lon": nearest["lon"],
-        "lat": nearest["lat"],
-        "name": cp["name"]
-    })
+    # Kontrollpunkte
+    cp_data = []
+    for cp in control_points:
+        if "km" not in cp or cp["km"] in (None, "", " "):
+            continue
+        try:
+            target_km = float(cp["km"])
+        except:
+            continue
+        nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
+        cp_data.append({"lon": nearest["lon"], "lat": nearest["lat"], "name": cp["name"]})
 
-if cp_data:
-    layers.append(
-        pdk.Layer(
-            "ScatterplotLayer",
-            data=cp_data,
-            get_position="[lon, lat]",
-            get_color=[0, 100, 255],
-            get_radius=90,
+    if cp_data:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=cp_data,
+                get_position="[lon, lat]",
+                get_color=[0, 100, 255],
+                get_radius=90,
+            )
         )
-    )
 
-# Pausenpunkte (gelb)
-pause_data = []
-for p in pauses:
-    nearest = df.iloc[(df["km"] - p["km"]).abs().argmin()]
-    pause_data.append({
-        "lon": nearest["lon"],
-        "lat": nearest["lat"],
-    })
+    # Pausenpunkte
+    pause_data = []
+    for p in pauses:
+        if "km" not in p or p["km"] in (None, "", " "):
+            continue
+        try:
+            target_km = float(p["km"])
+        except:
+            continue
+        nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
+        pause_data.append({"lon": nearest["lon"], "lat": nearest["lat"]})
 
-if pause_data:
-    layers.append(
-        pdk.Layer(
-            "ScatterplotLayer",
-            data=pause_data,
-            get_position="[lon, lat]",
-            get_color=[255, 220, 0],
-            get_radius=90,
+    if pause_data:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=pause_data,
+                get_position="[lon, lat]",
+                get_color=[255, 220, 0],
+                get_radius=90,
+            )
         )
-    )
 
-
-    # ---------------------------------------------------------
-    # Karte rendern
-    # ---------------------------------------------------------
     view_state = pdk.ViewState(
         latitude=midpoint[0],
         longitude=midpoint[1],
@@ -279,17 +227,15 @@ if pause_data:
 # ---------------------------------------------------------
 # HÖHENPROFIL
 # ---------------------------------------------------------
-import math
-
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Erdradius in Metern
+    R = 6371000
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
-
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    
+
+
 def add_distance_column(df):
     distances = [0]
     for i in range(1, len(df)):
@@ -309,14 +255,12 @@ def show_elevation_profile(df: pd.DataFrame):
         st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
-    # Steigung robust berechnen
     df["delta_h"] = df["elevation"].diff()
     df["delta_m"] = df["distance_m"].diff().replace(0, 0.1)
     df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
     df["gradient"] = df["gradient"].clip(-20, 20)
     df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_periods=1).mean()
 
-    # Farben
     def gradient_color(g):
         if g < 2:
             return "green"
@@ -329,7 +273,6 @@ def show_elevation_profile(df: pd.DataFrame):
 
     df["color"] = df["gradient_smooth"].apply(gradient_color)
 
-    # Balkenprofil
     chart = (
         alt.Chart(df)
         .mark_bar()
@@ -344,7 +287,7 @@ def show_elevation_profile(df: pd.DataFrame):
     st.altair_chart(chart, use_container_width=True)
 
 
- # ---------------------------------------------------------
+# ---------------------------------------------------------
 # HAUPTBEREICH – GPX UPLOAD & ANALYSE
 # ---------------------------------------------------------
 uploaded_files = st.file_uploader(
@@ -367,20 +310,6 @@ if uploaded_files:
         st.dataframe(df)
 
         st.subheader("🗺️ Karte")
-       # Kontrollpunkte sicherstellen
-       if "control_points" not in st.session_state:
-       st.session_state["control_points"] = []
-       control_points = st.session_state["control_points"]
-    
-    # Pausenpunkte sicherstellen
-      if "pauses" not in st.session_state:
-      st.session_state["pauses"] = []
-      pauses = st.session_state["pauses"]
-
-# Karte zeichnen
-show_map(df, control_points, pauses)
-
-
         show_map(df, control_points, pauses)
 
         st.subheader("⛰️ Höhenprofil")
@@ -390,7 +319,6 @@ show_map(df, control_points, pauses)
         html_report += f"<h2>{file.name}</h2>"
         html_report += df.to_html(index=False)
 
-    # Excel Export
     excel_bytes = export_to_excel(all_dfs)
     st.download_button(
         label="📥 Excel Export",
@@ -399,7 +327,6 @@ show_map(df, control_points, pauses)
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # PDF Export
     pdf_bytes = export_to_pdf(html_report)
     st.download_button(
         label="📄 PDF Export",
@@ -410,5 +337,4 @@ show_map(df, control_points, pauses)
 
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
-
 
