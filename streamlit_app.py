@@ -57,27 +57,58 @@ st.sidebar.header("⏱ ACP‑Regeln")
 start_time = st.sidebar.time_input("Startzeit")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
 
-# Pausen
-st.sidebar.header("☕ Pausen")
-pause_count = st.sidebar.number_input("Anzahl Pausen", min_value=0, max_value=20, value=2)
+# Pausenpunkte (gelb)
+# Pausenpunkte (gelb)
+pause_data = []
+for p in pauses:
 
-pauses = []
-for i in range(pause_count):
-    st.sidebar.subheader(f"Pause {i+1}")
-    km = st.sidebar.number_input(f"km‑Marke Pause {i+1}", min_value=0, max_value=2000, value=50*(i+1))
-    duration = st.sidebar.number_input(f"Dauer Pause {i+1} (min)", min_value=1, max_value=120, value=10)
-    pauses.append({"km": km, "duration": duration})
+    if "km" not in p:
+        continue
+    if p["km"] in (None, "", " "):
+        continue
 
-# Kontrollpunkte
-st.sidebar.header("📍 Kontrollpunkte")
-cp_count = st.sidebar.number_input("Anzahl Kontrollpunkte", min_value=0, max_value=20, value=3)
+    try:
+        target_km = float(p["km"])
+    except:
+        continue
 
-control_points = []
-for i in range(cp_count):
-    st.sidebar.subheader(f"Kontrollpunkt {i+1}")
-    km = st.sidebar.number_input(f"km‑Marke KP {i+1}", min_value=0, max_value=2000, value=50*(i+1))
-    name = st.sidebar.text_input(f"Name KP {i+1}", value=f"Kontrolle {i+1}")
-    control_points.append({"km": km, "name": name})
+    nearest_idx = (df["km"] - target_km).abs().argmin()
+    nearest = df.iloc[nearest_idx]
+
+    pause_data.append({
+        "lon": nearest["lon"],
+        "lat": nearest["lat"],
+    })
+
+
+# Kontrollpunkte (blau)
+# Kontrollpunkte (blau)
+cp_data = []
+for cp in control_points:
+
+    # km-Feld prüfen
+    if "km" not in cp:
+        continue
+    if cp["km"] in (None, "", " "):
+        continue
+
+    # km in float umwandeln
+    try:
+        target_km = float(cp["km"])
+    except:
+        continue
+
+    # nächsten GPX-Punkt finden
+    nearest_idx = (df["km"] - target_km).abs().argmin()
+    nearest = df.iloc[nearest_idx]
+
+    cp_data.append({
+        "lon": nearest["lon"],
+        "lat": nearest["lat"],
+        "name": cp.get("name", "Kontrollpunkt")
+    })
+
+
 
 
 # ---------------------------------------------------------
