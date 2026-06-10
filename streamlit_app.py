@@ -190,48 +190,47 @@ def show_map(df: pd.DataFrame, control_points, pauses):
     # ---------------------------------------------------------
     # Kontrollpunkte (blau)
     # ---------------------------------------------------------
-    cp_data = []
-    for cp in control_points:
-        # Nächster GPX-Punkt anhand km-Marke
-        idx = min(int(cp["km"]), len(df) - 1)
-        cp_data.append({
-            "lon": df.iloc[idx]["lon"],
-            "lat": df.iloc[idx]["lat"],
-            "name": cp["name"]
-        })
+   # Kontrollpunkte (blau)
+cp_data = []
+for cp in control_points:
+    nearest = df.iloc[(df["km"] - cp["km"]).abs().argmin()]
+    cp_data.append({
+        "lon": nearest["lon"],
+        "lat": nearest["lat"],
+        "name": cp["name"]
+    })
 
-    if cp_data:
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=cp_data,
-                get_position="[lon, lat]",
-                get_color=[0, 100, 255],
-                get_radius=90,
-            )
+if cp_data:
+    layers.append(
+        pdk.Layer(
+            "ScatterplotLayer",
+            data=cp_data,
+            get_position="[lon, lat]",
+            get_color=[0, 100, 255],
+            get_radius=90,
         )
+    )
 
-    # ---------------------------------------------------------
-    # Pausenpunkte (gelb)
-    # ---------------------------------------------------------
-    pause_data = []
-    for p in pauses:
-        idx = min(int(p["km"]), len(df) - 1)
-        pause_data.append({
-            "lon": df.iloc[idx]["lon"],
-            "lat": df.iloc[idx]["lat"],
-        })
+# Pausenpunkte (gelb)
+pause_data = []
+for p in pauses:
+    nearest = df.iloc[(df["km"] - p["km"]).abs().argmin()]
+    pause_data.append({
+        "lon": nearest["lon"],
+        "lat": nearest["lat"],
+    })
 
-    if pause_data:
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=pause_data,
-                get_position="[lon, lat]",
-                get_color=[255, 220, 0],
-                get_radius=90,
-            )
+if pause_data:
+    layers.append(
+        pdk.Layer(
+            "ScatterplotLayer",
+            data=pause_data,
+            get_position="[lon, lat]",
+            get_color=[255, 220, 0],
+            get_radius=90,
         )
+    )
+
 
     # ---------------------------------------------------------
     # Karte rendern
@@ -280,13 +279,21 @@ def show_elevation_profile(df: pd.DataFrame):
         return
 
     # Steigung berechnen
-    df["delta_h"] = df["elevation"].diff()
-    df["delta_m"] = df["distance_m"].diff()
-    df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
-    df["gradient"] = df["gradient"].fillna(0)
+    # Steigung berechnen (robust)
+# Steigung berechnen (robust)
+df["delta_h"] = df["elevation"].diff()
+df["delta_m"] = df["distance_m"].diff()
 
-    # Glätten
-    df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
+# winzige Distanzen verhindern Ausreißer
+df["delta_m"] = df["delta_m"].replace(0, 0.1)
+
+df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
+
+# unrealistische Werte kappen
+df["gradient"] = df["gradient"].clip(-20, 20)
+
+# glätten
+df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_periods=1).mean()
 
     # Farben
     def gradient_color(g):
