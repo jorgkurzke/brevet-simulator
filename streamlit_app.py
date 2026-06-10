@@ -83,6 +83,67 @@ uploaded_files = st.file_uploader(
 )
 
 colors = ["red", "blue", "green", "purple", "orange", "black", "brown"]
+# ---------------------------------------------------------
+# Hauptlogik – WICHTIG: Diese Bedingung muss existieren!
+# ---------------------------------------------------------
+
+if uploaded_files and len(uploaded_files) > 0:
+
+    st.write("DEBUG: Dateien erkannt:", [f.name for f in uploaded_files])
+
+    track_stats = []
+    m = None
+
+    for idx, file in enumerate(uploaded_files):
+        gpx = gpxpy.parse(file)
+        color = colors[idx % len(colors)]
+
+        all_points = []
+        for track in gpx.tracks:
+            for segment in track.segments:
+                for p in segment.points:
+                    all_points.append((p.latitude, p.longitude, p.elevation, p.time))
+
+        if not all_points:
+            st.warning(f"⚠️ Keine Punkte in {file.name}")
+            continue
+
+        df = compute_stats(all_points)
+        df = apply_breaks(df, pause_df)
+        controls = compute_controls(df, kontroll_df)
+
+        track_stats.append((file.name, df, controls))
+
+        if m is None:
+            m = folium.Map(location=[df.lat.iloc[0], df.lon.iloc[0]], zoom_start=11)
+
+        folium.PolyLine(
+            df[["lat", "lon"]].values,
+            color=color,
+            weight=4,
+            opacity=0.9,
+            tooltip=file.name
+        ).add_to(m)
+
+        folium.Marker(
+            [df.lat.iloc[0], df.lon.iloc[0]],
+            popup=f"{file.name} Start"
+        ).add_to(m)
+        folium.Marker(
+            [df.lat.iloc[-1], df.lon.iloc[-1]],
+            popup=f"{file.name} Ziel"
+        ).add_to(m)
+
+    # Karte anzeigen
+    st.subheader("🗺️ Karte")
+    html(m._repr_html_(), height=600)
+
+    # Restliche Auswertungen …
+    # (dein bestehender Code bleibt unverändert)
+
+else:
+    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 # ---------------------------------------------------------
 # Hilfsfunktionen
