@@ -249,24 +249,46 @@ def show_map(df: pd.DataFrame, control_points, pauses):
 # ---------------------------------------------------------
 # HÖHENPROFIL
 # ---------------------------------------------------------
+import math
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371000  # Erdradius in Metern
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+def add_distance_column(df):
+    distances = [0]
+    for i in range(1, len(df)):
+        d = haversine(
+            df.iloc[i-1]["lat"], df.iloc[i-1]["lon"],
+            df.iloc[i]["lat"], df.iloc[i]["lon"]
+        )
+        distances.append(distances[-1] + d)
+
+    df["distance_m"] = distances
+    df["km"] = df["distance_m"] / 1000
+    return df
+
+
 def show_elevation_profile(df: pd.DataFrame):
     if "elevation" not in df or df["elevation"].isna().all():
         st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
-    # Distanz in km (grob, falls keine Distanz vorhanden)
-    df["km"] = df.index / 1000
-
-    # Steigung berechnen (in %)
+    # Steigung berechnen
     df["delta_h"] = df["elevation"].diff()
-    df["delta_km"] = df["km"].diff()
-    df["gradient"] = (df["delta_h"] / (df["delta_km"] * 1000)) * 100
+    df["delta_m"] = df["distance_m"].diff()
+    df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
     df["gradient"] = df["gradient"].fillna(0)
 
-    # Steigung glätten
+    # Glätten
     df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
 
-    # Farbcodierung nach Steigung
+    # Farben
     def gradient_color(g):
         if g < 2:
             return "green"
@@ -298,6 +320,7 @@ def show_elevation_profile(df: pd.DataFrame):
 
     st.altair_chart(chart, use_container_width=True)
 
+
 # ---------------------------------------------------------
 # HAUPTBEREICH – GPX UPLOAD & ANALYSE
 # ---------------------------------------------------------
@@ -317,6 +340,7 @@ if uploaded_files:
         st.subheader(f"📍 {file.name}")
 
         df = parse_gpx(file)
+        df = add_distance_column(df)
         st.dataframe(df)
 
         st.subheader("🗺️ Karte")
