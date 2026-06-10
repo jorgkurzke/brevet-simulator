@@ -57,6 +57,27 @@ st.sidebar.header("⏱ ACP‑Regeln")
 start_time = st.sidebar.time_input("Startzeit")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
 
+# ---------------------------------------------------------
+# SIDEBAR – KONTROLLPUNKTE
+# ---------------------------------------------------------
+st.sidebar.header("📍 Kontrollpunkte")
+
+if "control_points" not in st.session_state:
+    st.session_state["control_points"] = []
+
+# Eingabe für neuen Kontrollpunkt
+new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0)
+new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts")
+
+if st.sidebar.button("Kontrollpunkt hinzufügen"):
+    st.session_state["control_points"].append({
+        "km": new_cp_km,
+        "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}"
+    })
+
+# Liste anzeigen
+for i, cp in enumerate(st.session_state["control_points"]):
+    st.sidebar.write(f"• {cp['km']} km – {cp['name']}")
 
 # ---------------------------------------------------------
 # INITIALISIERUNG DER KONTROLL- UND PAUSENPUNKTE
