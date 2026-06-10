@@ -148,33 +148,29 @@ def sanitize_gpx(df):
             freq="1S"
         )
 
-    # --- Höhenwerte robust bereinigen ---
+    # --- Höhenwerte extrem robust bereinigen ---
+    # Alles in float umwandeln, egal was drinsteht
     df["ele"] = pd.to_numeric(df["ele"], errors="coerce")
+
+    # Inf → NaN
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
 
-    # WENN ZU WENIGE PUNKTE → KEINE INTERPOLATION
+    # Wenn weniger als 3 Punkte → KEINE Interpolation
     if len(df) < 3:
-        # Wenn alle Höhen fehlen → setze 0
-        if df["ele"].isna().all():
-            df["ele"] = 0
-        else:
-            # Fehlende Werte mit dem letzten gültigen Wert füllen
-            df["ele"] = df["ele"].fillna(method="ffill").fillna(method="bfill")
+        df["ele"] = df["ele"].fillna(method="ffill").fillna(method="bfill").fillna(0)
         return df.reset_index(drop=True)
 
-    # WENN GENUG PUNKTE → INTERPOLATION
+    # Wenn ALLE Höhen fehlen → setze 0
     if df["ele"].isna().all():
         df["ele"] = 0
     else:
-        df["ele"] = df["ele"].astype(float)
+        # Jetzt ist die Spalte garantiert float → Interpolation sicher
         df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
     # --- Doppelte Punkte entfernen ---
     df = df.loc[~((df["lat"].diff() == 0) & (df["lon"].diff() == 0))]
 
     return df.reset_index(drop=True)
-
-
 
 
 def compute_stats(points):
