@@ -361,9 +361,9 @@ if uploaded_files and len(uploaded_files) > 0:
 
     def safe_sheet_name(name, existing):
     # Verbotene Zeichen entfernen
-    invalid = ['\\', '/', '?', '*', '[', ']']
-    for c in invalid:
-        name = name.replace(c, '')
+        invalid = ['\\', '/', '?', '*', '[', ']']
+        for c in invalid:
+            name = name.replace(c, '')
 
     # Leere Namen ersetzen
     if not name.strip():
@@ -383,6 +383,7 @@ if uploaded_files and len(uploaded_files) > 0:
 
     # Excel-Limit 31 Zeichen
     return final[:31]
+
     
     with BytesIO() as buffer:
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
