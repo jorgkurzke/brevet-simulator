@@ -147,12 +147,11 @@ def sanitize_gpx(df):
     # --- Zeit robust bereinigen ---
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
 
-    if df["time"].isna().all():
-        df["time"] = pd.date_range(
-            start=datetime.now(),
-            periods=len(df),
-            freq="1S"
-        )
+    df["time"] = pd.date_range(
+    start=datetime.now(),
+    periods=len(df),
+    freq=pd.Timedelta(seconds=1)
+)
 
     # --- Höhenwerte extrem robust bereinigen ---
     # Alles in float umwandeln, egal was drinsteht
