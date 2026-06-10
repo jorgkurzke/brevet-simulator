@@ -278,7 +278,9 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             )
         )
 
-    # Karte rendern
+    # ---------------------------------------------------------
+    # Karte rendern  ← WICHTIG: dieser Block MUSS eingerückt sein!
+    # ---------------------------------------------------------
     view_state = pdk.ViewState(
         latitude=midpoint[0],
         longitude=midpoint[1],
@@ -296,6 +298,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             }
         )
     )
+
 
 
 
