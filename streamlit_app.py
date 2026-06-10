@@ -137,30 +137,34 @@ def speed_from_power(power, slope, mass, cda, crr, headwind):
 
 
 def sanitize_gpx(df):
-    st.write("DEBUG ELE RAW:", df["ele"].head(10).tolist())
-    st.write("DEBUG ELE TYPES:", df["ele"].apply(type).head(10).tolist())
-    st.write("DEBUG DF HEAD:", df.head())
-
-    
     df = df.copy()
+
+    # --- LAT/LON robust bereinigen ---
+    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+
+    # Ungültige Koordinaten entfernen
+    df = df.dropna(subset=["lat", "lon"])
 
     # --- Zeit robust bereinigen ---
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
 
-    df["time"] = pd.date_range(
-    start=datetime.now(),
-    periods=len(df),
-    freq=pd.Timedelta(seconds=1)
-)
+    # Wenn ALLE Zeiten fehlen → künstliche Zeitreihe
+    if df["time"].isna().all():
+        df["time"] = pd.date_range(
+            start=datetime.now(),
+            periods=len(df),
+            freq=pd.Timedelta(seconds=1)
+        )
+    else:
+        # Fehlende Zeiten füllen
+        df["time"] = df["time"].fillna(method="ffill").fillna(method="bfill")
 
-    # --- Höhenwerte extrem robust bereinigen ---
-    # Alles in float umwandeln, egal was drinsteht
+    # --- Höhenwerte robust bereinigen ---
     df["ele"] = pd.to_numeric(df["ele"], errors="coerce")
-
-    # Inf → NaN
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
 
-    # Wenn weniger als 3 Punkte → KEINE Interpolation
+    # Wenn weniger als 3 Punkte → keine Interpolation
     if len(df) < 3:
         df["ele"] = df["ele"].fillna(method="ffill").fillna(method="bfill").fillna(0)
         return df.reset_index(drop=True)
@@ -169,7 +173,7 @@ def sanitize_gpx(df):
     if df["ele"].isna().all():
         df["ele"] = 0
     else:
-        # Jetzt ist die Spalte garantiert float → Interpolation sicher
+        df["ele"] = df["ele"].astype(float)
         df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
     # --- Doppelte Punkte entfernen ---
