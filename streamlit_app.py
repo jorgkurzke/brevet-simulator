@@ -2,13 +2,12 @@
 # IMPORTS
 # ---------------------------------------------------------
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import BytesIO
 
 import streamlit as st
 import pandas as pd
 import xlsxwriter
-import io
 import pydeck as pdk
 import altair as alt
 import xml.etree.ElementTree as ET
@@ -32,30 +31,26 @@ st.title("Brevet GPX Analyzer & Simulator")
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
-# FTP
 ftp = st.sidebar.number_input("FTP (Watt)", min_value=100, max_value=400, value=220, step=5)
 
-# Leistungsprofile
 st.sidebar.subheader("Leistungsprofile")
 power_flat = st.sidebar.number_input("Flach (Watt)", min_value=80, max_value=400, value=180)
 power_climb = st.sidebar.number_input("Berg (Watt)", min_value=80, max_value=400, value=200)
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
 
-# Physikalisches Modell
 st.sidebar.subheader("Physikalisches Modell")
 c_rr = st.sidebar.number_input("Rollwiderstand Crr", min_value=0.002, max_value=0.01, value=0.004, step=0.001)
 c_dA = st.sidebar.number_input("Luftwiderstand CdA", min_value=0.15, max_value=0.40, value=0.28, step=0.01)
 weight = st.sidebar.number_input("Systemgewicht (kg)", min_value=60, max_value=120, value=85)
 
-# Windmodell
 st.sidebar.subheader("Windmodell")
 wind_speed = st.sidebar.number_input("Windstärke (km/h)", min_value=0, max_value=80, value=10)
 wind_dir = st.sidebar.slider("Windrichtung (°)", min_value=0, max_value=360, value=180)
 
-# ACP-Regeln
 st.sidebar.header("⏱ ACP‑Regeln")
 start_time = st.sidebar.time_input("Startzeit")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
+
 
 # ---------------------------------------------------------
 # SIDEBAR – KONTROLLPUNKTE
@@ -65,7 +60,6 @@ st.sidebar.header("📍 Kontrollpunkte")
 if "control_points" not in st.session_state:
     st.session_state["control_points"] = []
 
-# Eingabe für neuen Kontrollpunkt
 new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0)
 new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts")
 
@@ -75,21 +69,25 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
         "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}"
     })
 
-# Liste anzeigen
-for i, cp in enumerate(st.session_state["control_points"]):
+for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']}")
 
+
 # ---------------------------------------------------------
-# INITIALISIERUNG DER KONTROLL- UND PAUSENPUNKTE
+# SIDEBAR – PAUSENPUNKTE
 # ---------------------------------------------------------
-if "control_points" not in st.session_state:
-    st.session_state["control_points"] = []
+st.sidebar.header("⏸ Pausenpunkte")
 
 if "pauses" not in st.session_state:
     st.session_state["pauses"] = []
 
-control_points = st.session_state["control_points"]
-pauses = st.session_state["pauses"]
+new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0)
+
+if st.sidebar.button("Pause hinzufügen"):
+    st.session_state["pauses"].append({"km": new_pause_km})
+
+for p in st.session_state["pauses"]:
+    st.sidebar.write(f"• Pause bei {p['km']} km")
 
 
 # ---------------------------------------------------------
@@ -138,6 +136,32 @@ def parse_gpx(file) -> pd.DataFrame:
         })
 
     return pd.DataFrame(data)
+
+
+# ---------------------------------------------------------
+# DISTANZBERECHNUNG
+# ---------------------------------------------------------
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def add_distance_column(df):
+    distances = [0]
+    for i in range(1, len(df)):
+        d = haversine(
+            df.iloc[i-1]["lat"], df.iloc[i-1]["lon"],
+            df.iloc[i]["lat"], df.iloc[i]["lon"]
+        )
+        distances.append(distances[-1] + d)
+
+    df["distance_m"] = distances
+    df["km"] = df["distance_m"] / 1000
+    return df
 
 
 # ---------------------------------------------------------
@@ -248,29 +272,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
 # ---------------------------------------------------------
 # HÖHENPROFIL
 # ---------------------------------------------------------
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-def add_distance_column(df):
-    distances = [0]
-    for i in range(1, len(df)):
-        d = haversine(
-            df.iloc[i-1]["lat"], df.iloc[i-1]["lon"],
-            df.iloc[i]["lat"], df.iloc[i]["lon"]
-        )
-        distances.append(distances[-1] + d)
-
-    df["distance_m"] = distances
-    df["km"] = df["distance_m"] / 1000
-    return df
-
-
 def show_elevation_profile(df: pd.DataFrame):
     if "elevation" not in df or df["elevation"].isna().all():
         st.info("Keine Höhendaten in dieser GPX-Datei.")
@@ -331,7 +332,7 @@ if uploaded_files:
         st.dataframe(df)
 
         st.subheader("🗺️ Karte")
-        show_map(df, control_points, pauses)
+        show_map(df, st.session_state["control_points"], st.session_state["pauses"])
 
         st.subheader("⛰️ Höhenprofil")
         show_elevation_profile(df)
