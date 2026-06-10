@@ -278,22 +278,12 @@ def show_elevation_profile(df: pd.DataFrame):
         st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
-    # Steigung berechnen
-    # Steigung berechnen (robust)
-# Steigung berechnen (robust)
-df["delta_h"] = df["elevation"].diff()
-df["delta_m"] = df["distance_m"].diff()
-
-# winzige Distanzen verhindern Ausreißer
-df["delta_m"] = df["delta_m"].replace(0, 0.1)
-
-df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
-
-# unrealistische Werte kappen
-df["gradient"] = df["gradient"].clip(-20, 20)
-
-# glätten
-df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_periods=1).mean()
+    # Steigung robust berechnen
+    df["delta_h"] = df["elevation"].diff()
+    df["delta_m"] = df["distance_m"].diff().replace(0, 0.1)
+    df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
+    df["gradient"] = df["gradient"].clip(-20, 20)
+    df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_periods=1).mean()
 
     # Farben
     def gradient_color(g):
@@ -308,7 +298,7 @@ df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_perio
 
     df["color"] = df["gradient_smooth"].apply(gradient_color)
 
-    # Balken-Höhenprofil
+    # Balkenprofil
     chart = (
         alt.Chart(df)
         .mark_bar()
@@ -316,11 +306,6 @@ df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_perio
             x=alt.X("km:Q", title="Distanz (km)"),
             y=alt.Y("elevation:Q", title="Höhe (m)"),
             color=alt.Color("color:N", scale=None, legend=None),
-            tooltip=[
-                alt.Tooltip("km:Q", title="km"),
-                alt.Tooltip("elevation:Q", title="Höhe (m)"),
-                alt.Tooltip("gradient_smooth:Q", title="Steigung (%)")
-            ]
         )
         .properties(height=250)
     )
@@ -328,7 +313,7 @@ df["gradient_smooth"] = df["gradient"].rolling(window=15, center=True, min_perio
     st.altair_chart(chart, use_container_width=True)
 
 
-# ---------------------------------------------------------
+ # ---------------------------------------------------------
 # HAUPTBEREICH – GPX UPLOAD & ANALYSE
 # ---------------------------------------------------------
 uploaded_files = st.file_uploader(
