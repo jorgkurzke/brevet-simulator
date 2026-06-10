@@ -291,7 +291,7 @@ if uploaded_files:
         st.dataframe(df)
 
         st.subheader("🗺️ Karte")
-        show_map(df)
+        show_map(df, control_points, pauses)
 
         st.subheader("⛰️ Höhenprofil")
         show_elevation_profile(df)
