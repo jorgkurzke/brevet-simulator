@@ -1,3 +1,6 @@
+# ---------------------------------------------------------
+# IMPORTS
+# ---------------------------------------------------------
 import math
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -6,9 +9,13 @@ import streamlit as st
 import pandas as pd
 import xlsxwriter
 import io
+import pydeck as pdk
+import altair as alt
+import xml.etree.ElementTree as ET
+
 
 # ---------------------------------------------------------
-# Streamlit Grundkonfiguration
+# STREAMLIT KONFIGURATION
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Brevet GPX Analyzer & Simulator",
@@ -19,24 +26,19 @@ st.set_page_config(
 
 st.title("Brevet GPX Analyzer & Simulator")
 
+
 # ---------------------------------------------------------
-# SIDEBAR – Eingaben für Simulation
+# SIDEBAR – SIMULATIONSEINSTELLUNGEN
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
 # FTP
-ftp = st.sidebar.number_input(
-    "FTP (Watt)",
-    min_value=100,
-    max_value=400,
-    value=220,
-    step=5
-)
+ftp = st.sidebar.number_input("FTP (Watt)", min_value=100, max_value=400, value=220, step=5)
 
 # Leistungsprofile
 st.sidebar.subheader("Leistungsprofile")
-power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
-power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
+power_flat = st.sidebar.number_input("Flach (Watt)", min_value=80, max_value=400, value=180)
+power_climb = st.sidebar.number_input("Berg (Watt)", min_value=80, max_value=400, value=200)
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
 
 # Physikalisches Modell
@@ -77,14 +79,16 @@ for i in range(cp_count):
     name = st.sidebar.text_input(f"Name KP {i+1}", value=f"Kontrolle {i+1}")
     control_points.append({"km": km, "name": name})
 
+
 # ---------------------------------------------------------
-# Hilfsfunktionen
+# HILFSFUNKTIONEN
 # ---------------------------------------------------------
 def safe_sheet_name(name: str) -> str:
     invalid_chars = ['\\', '/', '*', '?', ':', '[', ']']
     for ch in invalid_chars:
         name = name.replace(ch, '_')
     return name[:31]
+
 
 def export_to_excel(dfs: dict) -> bytes:
     output = BytesIO()
@@ -93,6 +97,7 @@ def export_to_excel(dfs: dict) -> bytes:
             df.to_excel(writer, sheet_name=safe_sheet_name(sheet_name), index=False)
     return output.getvalue()
 
+
 def export_to_pdf(html_content: str) -> bytes:
     try:
         import pdfkit
@@ -100,12 +105,10 @@ def export_to_pdf(html_content: str) -> bytes:
     except Exception:
         return html_content.encode("utf-8")
 
-def parse_gpx(file) -> pd.DataFrame:
-    import xml.etree.ElementTree as ET
 
+def parse_gpx(file) -> pd.DataFrame:
     tree = ET.parse(file)
     root = tree.getroot()
-
     ns = {"default": "http://www.topografix.com/GPX/1/1"}
 
     data = []
@@ -124,44 +127,16 @@ def parse_gpx(file) -> pd.DataFrame:
 
     return pd.DataFrame(data)
 
+
 # ---------------------------------------------------------
-# Hauptbereich – GPX Upload & Analyse
+# KARTE
 # ---------------------------------------------------------
-uploaded_files = st.file_uploader(
-    "GPX-Dateien hochladen",
-    type=["gpx"],
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-    st.success(f"{len(uploaded_files)} Datei(en) geladen")
-
-    all_dfs = {}
-    html_report = "<h1>Brevet Analyse Report</h1>"
-
-    for file in uploaded_files:
-        st.subheader(f"📍 {file.name}")
-
-        df = parse_gpx(file)   # ← WICHTIG: Klammer geschlossen!
-        st.dataframe(df)
-        st.subheader("🗺️ Karte")
-        show_map(df)
-
-        st.subheader("⛰️ Höhenprofil")
-        show_elevation_profile(df)
-
-
-        all_dfs[file.name] = df
-        html_report += f"<h2>{file.name}</h2>"
-        html_report += df.to_html(index=False)
-
-import pydeck as pdk
-
 def show_map(df: pd.DataFrame):
     if df.empty:
         st.warning("Keine GPS-Daten für die Karte.")
         return
 
+    df["coordinates"] = df.apply(lambda r: [r["lon"], r["lat"]], axis=1)
     midpoint = (df["lat"].mean(), df["lon"].mean())
 
     layer = pdk.Layer(
@@ -180,18 +155,18 @@ def show_map(df: pd.DataFrame):
         pitch=0,
     )
 
-    df["coordinates"] = df.apply(lambda r: [r["lon"], r["lat"]], axis=1)
-
     st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
 
-import altair as alt
 
+# ---------------------------------------------------------
+# HÖHENPROFIL
+# ---------------------------------------------------------
 def show_elevation_profile(df: pd.DataFrame):
     if "elevation" not in df or df["elevation"].isna().all():
         st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
-    df["km"] = df.index / 1000  # grobe Distanz, falls keine Distanzspalte existiert
+    df["km"] = df.index / 1000
 
     chart = (
         alt.Chart(df)
@@ -204,4 +179,58 @@ def show_elevation_profile(df: pd.DataFrame):
     )
 
     st.altair_chart(chart, use_container_width=True)
+
+
+# ---------------------------------------------------------
+# HAUPTBEREICH – GPX UPLOAD & ANALYSE
+# ---------------------------------------------------------
+uploaded_files = st.file_uploader(
+    "GPX-Dateien hochladen",
+    type=["gpx"],
+    accept_multiple_files=True
+)
+
+if uploaded_files:
+    st.success(f"{len(uploaded_files)} Datei(en) geladen")
+
+    all_dfs = {}
+    html_report = "<h1>Brevet Analyse Report</h1>"
+
+    for file in uploaded_files:
+        st.subheader(f"📍 {file.name}")
+
+        df = parse_gpx(file)
+        st.dataframe(df)
+
+        st.subheader("🗺️ Karte")
+        show_map(df)
+
+        st.subheader("⛰️ Höhenprofil")
+        show_elevation_profile(df)
+
+        all_dfs[file.name] = df
+        html_report += f"<h2>{file.name}</h2>"
+        html_report += df.to_html(index=False)
+
+    # Excel Export
+    excel_bytes = export_to_excel(all_dfs)
+    st.download_button(
+        label="📥 Excel Export",
+        data=excel_bytes,
+        file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # PDF Export
+    pdf_bytes = export_to_pdf(html_report)
+    st.download_button(
+        label="📄 PDF Export",
+        data=pdf_bytes,
+        file_name=f"brevet_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf"
+    )
+
+else:
+    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
