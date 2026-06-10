@@ -62,15 +62,17 @@ if "control_points" not in st.session_state:
 
 new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0)
 new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts")
+new_cp_pause = st.sidebar.number_input("Pause an diesem Kontrollpunkt (Minuten)", min_value=0, max_value=180, value=0)
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["control_points"].append({
         "km": new_cp_km,
-        "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}"
+        "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}",
+        "pause_min": new_cp_pause
     })
 
 for cp in st.session_state["control_points"]:
-    st.sidebar.write(f"• {cp['km']} km – {cp['name']}")
+    st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
 
 
 # ---------------------------------------------------------
@@ -82,12 +84,17 @@ if "pauses" not in st.session_state:
     st.session_state["pauses"] = []
 
 new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0)
+new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", min_value=0, max_value=180, value=0)
 
 if st.sidebar.button("Pause hinzufügen"):
-    st.session_state["pauses"].append({"km": new_pause_km})
+    st.session_state["pauses"].append({
+        "km": new_pause_km,
+        "pause_min": new_pause_min
+    })
 
 for p in st.session_state["pauses"]:
-    st.sidebar.write(f"• Pause bei {p['km']} km")
+    st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
+
 
 
 # ---------------------------------------------------------
@@ -198,7 +205,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             data=[{"lon": start[0], "lat": start[1]}],
             get_position="[lon, lat]",
             get_color=[0, 200, 0],
-            get_radius=80,
+            get_radius=200,
         )
     )
 
@@ -209,7 +216,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             data=[{"lon": end[0], "lat": end[1]}],
             get_position="[lon, lat]",
             get_color=[0, 0, 0],
-            get_radius=80,
+            get_radius=200,
         )
     )
 
@@ -223,7 +230,13 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         except:
             continue
         nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
-        cp_data.append({"lon": nearest["lon"], "lat": nearest["lat"], "name": cp["name"]})
+        cp_data.append({
+            "lon": nearest["lon"],
+            "lat": nearest["lat"],
+            "name": cp["name"],
+            "pause_min": cp.get("pause_min", 0)
+        })
+
 
     if cp_data:
         layers.append(
@@ -232,7 +245,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
                 data=cp_data,
                 get_position="[lon, lat]",
                 get_color=[0, 100, 255],
-                get_radius=90,
+                get_radius=250,
             )
         )
 
@@ -246,7 +259,13 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         except:
             continue
         nearest = df.iloc[(df["km"] - target_km).abs().argmin()]
-        pause_data.append({"lon": nearest["lon"], "lat": nearest["lat"]})
+        pause_data.append({
+            "lon": nearest["lon"],
+            "lat": nearest["lat"],
+            "name": "Pause",
+            "pause_min": p.get("pause_min", 0)
+        })
+
 
     if pause_data:
         layers.append(
@@ -255,7 +274,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
                 data=pause_data,
                 get_position="[lon, lat]",
                 get_color=[255, 220, 0],
-                get_radius=90,
+                get_radius=250,
             )
         )
 
@@ -333,6 +352,17 @@ if uploaded_files:
 
         st.subheader("🗺️ Karte")
         show_map(df, st.session_state["control_points"], st.session_state["pauses"])
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=layers,
+                initial_view_state=view_state,
+                tooltip={
+                    "html": "<b>{name}</b><br/>Pause: {pause_min} min",
+                    "style": {"color": "white"}
+                }
+            )
+            )
+
 
         st.subheader("⛰️ Höhenprofil")
         show_elevation_profile(df)
