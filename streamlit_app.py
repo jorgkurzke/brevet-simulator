@@ -139,10 +139,8 @@ def sanitize_gpx(df):
     df = df.copy()
 
     # --- Zeit robust bereinigen ---
-    # Manche GPX haben keine Zeitstempel → None → TypeError
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
 
-    # Wenn ALLE Zeiten fehlen → künstliche Zeit erzeugen
     if df["time"].isna().all():
         df["time"] = pd.date_range(
             start=datetime.now(),
@@ -150,13 +148,19 @@ def sanitize_gpx(df):
             freq="1S"
         )
 
-    # --- Höhenwerte robust bereinigen ---
-    df["ele"] = pd.to_numeric(df["ele"], errors="coerce")  # None → NaN
+    # --- Höhenwerte extrem robust bereinigen ---
+    # Alles, was nicht float ist, wird zu NaN
+    df["ele"] = pd.to_numeric(df["ele"], errors="coerce")
+
+    # Inf → NaN
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
 
+    # Wenn ALLE Höhen fehlen → setze 0
     if df["ele"].isna().all():
         df["ele"] = 0
     else:
+        # Interpolation nur auf float-Spalte
+        df["ele"] = df["ele"].astype(float)
         df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
     # --- Doppelte Punkte entfernen ---
