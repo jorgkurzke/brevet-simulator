@@ -4,12 +4,81 @@ from io import BytesIO
 
 import streamlit as st
 import pandas as pd
-import io
-from datetime import datetime
 import xlsxwriter
+import io
 
 # ---------------------------------------------------------
-# Hilfsfunktion: Sichere Sheet-Namen für Excel
+# Streamlit Grundkonfiguration
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="Brevet GPX Analyzer & Simulator",
+    page_icon="🚴",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.title("Brevet GPX Analyzer & Simulator")
+
+# ---------------------------------------------------------
+# SIDEBAR – Eingaben für Simulation
+# ---------------------------------------------------------
+st.sidebar.header("⚙️ Simulationseinstellungen")
+
+# FTP
+ftp = st.sidebar.number_input(
+    "FTP (Watt)",
+    min_value=100,
+    max_value=400,
+    value=220,
+    step=5
+)
+
+# Leistungsprofile
+st.sidebar.subheader("Leistungsprofile")
+power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
+power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
+power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
+
+# Physikalisches Modell
+st.sidebar.subheader("Physikalisches Modell")
+c_rr = st.sidebar.number_input("Rollwiderstand Crr", min_value=0.002, max_value=0.01, value=0.004, step=0.001)
+c_dA = st.sidebar.number_input("Luftwiderstand CdA", min_value=0.15, max_value=0.40, value=0.28, step=0.01)
+weight = st.sidebar.number_input("Systemgewicht (kg)", min_value=60, max_value=120, value=85)
+
+# Windmodell
+st.sidebar.subheader("Windmodell")
+wind_speed = st.sidebar.number_input("Windstärke (km/h)", min_value=0, max_value=80, value=10)
+wind_dir = st.sidebar.slider("Windrichtung (°)", min_value=0, max_value=360, value=180)
+
+# ACP-Regeln
+st.sidebar.header("⏱ ACP‑Regeln")
+start_time = st.sidebar.time_input("Startzeit")
+start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
+
+# Pausen
+st.sidebar.header("☕ Pausen")
+pause_count = st.sidebar.number_input("Anzahl Pausen", min_value=0, max_value=20, value=2)
+
+pauses = []
+for i in range(pause_count):
+    st.sidebar.subheader(f"Pause {i+1}")
+    km = st.sidebar.number_input(f"km‑Marke Pause {i+1}", min_value=0, max_value=2000, value=50*(i+1))
+    duration = st.sidebar.number_input(f"Dauer Pause {i+1} (min)", min_value=1, max_value=120, value=10)
+    pauses.append({"km": km, "duration": duration})
+
+# Kontrollpunkte
+st.sidebar.header("📍 Kontrollpunkte")
+cp_count = st.sidebar.number_input("Anzahl Kontrollpunkte", min_value=0, max_value=20, value=3)
+
+control_points = []
+for i in range(cp_count):
+    st.sidebar.subheader(f"Kontrollpunkt {i+1}")
+    km = st.sidebar.number_input(f"km‑Marke KP {i+1}", min_value=0, max_value=2000, value=50*(i+1))
+    name = st.sidebar.text_input(f"Name KP {i+1}", value=f"Kontrolle {i+1}")
+    control_points.append({"km": km, "name": name})
+
+# ---------------------------------------------------------
+# Hilfsfunktionen
 # ---------------------------------------------------------
 def safe_sheet_name(name: str) -> str:
     invalid_chars = ['\\', '/', '*', '?', ':', '[', ']']
@@ -17,19 +86,13 @@ def safe_sheet_name(name: str) -> str:
         name = name.replace(ch, '_')
     return name[:31]
 
-# ---------------------------------------------------------
-# Excel-Export
-# ---------------------------------------------------------
 def export_to_excel(dfs: dict) -> bytes:
-    output = io.BytesIO()
+    output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         for sheet_name, df in dfs.items():
             df.to_excel(writer, sheet_name=safe_sheet_name(sheet_name), index=False)
     return output.getvalue()
 
-# ---------------------------------------------------------
-# PDF-Export (HTML → PDF)
-# ---------------------------------------------------------
 def export_to_pdf(html_content: str) -> bytes:
     try:
         import pdfkit
@@ -37,9 +100,6 @@ def export_to_pdf(html_content: str) -> bytes:
     except Exception:
         return html_content.encode("utf-8")
 
-# ---------------------------------------------------------
-# GPX-Datei einlesen
-# ---------------------------------------------------------
 def parse_gpx(file) -> pd.DataFrame:
     import xml.etree.ElementTree as ET
 
@@ -65,10 +125,8 @@ def parse_gpx(file) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 # ---------------------------------------------------------
-# Streamlit UI
+# Hauptbereich – GPX Upload & Analyse
 # ---------------------------------------------------------
-st.title("Brevet GPX Analyzer & Planner")
-
 uploaded_files = st.file_uploader(
     "GPX-Dateien hochladen",
     type=["gpx"],
@@ -84,35 +142,4 @@ if uploaded_files:
     for file in uploaded_files:
         st.subheader(f"📍 {file.name}")
 
-        df = parse_gpx(file)
-        st.dataframe(df)
-
-        all_dfs[file.name] = df
-
-        html_report += f"<h2>{file.name}</h2>"
-        html_report += df.to_html(index=False)
-
-    # ---------------------------------------------------------
-    # Excel Export Button
-    # ---------------------------------------------------------
-    excel_bytes = export_to_excel(all_dfs)
-    st.download_button(
-        label="📥 Excel Export",
-        data=excel_bytes,
-        file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # ---------------------------------------------------------
-    # PDF Export Button
-    # ---------------------------------------------------------
-    pdf_bytes = export_to_pdf(html_report)
-    st.download_button(
-        label="📄 PDF Export",
-        data=pdf_bytes,
-        file_name=f"brevet_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf"
-    )
-
-else:
-    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+        df = parse_gpx(file
