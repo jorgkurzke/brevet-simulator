@@ -131,23 +131,111 @@ def parse_gpx(file) -> pd.DataFrame:
 # ---------------------------------------------------------
 # KARTE
 # ---------------------------------------------------------
-def show_map(df: pd.DataFrame):
+def show_map(df: pd.DataFrame, control_points, pauses):
     if df.empty:
         st.warning("Keine GPS-Daten für die Karte.")
         return
 
-    df["coordinates"] = df.apply(lambda r: [r["lon"], r["lat"]], axis=1)
+    # GPX-Track als Liste von Koordinaten
+    path = df.apply(lambda r: [r["lon"], r["lat"]], axis=1).tolist()
+
+    # Start- und Endpunkt
+    start = path[0]
+    end = path[-1]
+
     midpoint = (df["lat"].mean(), df["lon"].mean())
 
-    layer = pdk.Layer(
-        "PathLayer",
-        data=df,
-        get_path="coordinates",
-        get_color=[255, 0, 0],
-        width_scale=2,
-        width_min_pixels=2,
+    layers = []
+
+    # ---------------------------------------------------------
+    # GPX-Track (rote Linie)
+    # ---------------------------------------------------------
+    layers.append(
+        pdk.Layer(
+            "PathLayer",
+            data=[{"path": path}],
+            get_path="path",
+            get_color=[255, 0, 0],
+            width_scale=2,
+            width_min_pixels=2,
+        )
     )
 
+    # ---------------------------------------------------------
+    # Startpunkt (grün)
+    # ---------------------------------------------------------
+    layers.append(
+        pdk.Layer(
+            "ScatterplotLayer",
+            data=[{"lon": start[0], "lat": start[1]}],
+            get_position="[lon, lat]",
+            get_color=[0, 200, 0],
+            get_radius=80,
+        )
+    )
+
+    # ---------------------------------------------------------
+    # Endpunkt (schwarz)
+    # ---------------------------------------------------------
+    layers.append(
+        pdk.Layer(
+            "ScatterplotLayer",
+            data=[{"lon": end[0], "lat": end[1]}],
+            get_position="[lon, lat]",
+            get_color=[0, 0, 0],
+            get_radius=80,
+        )
+    )
+
+    # ---------------------------------------------------------
+    # Kontrollpunkte (blau)
+    # ---------------------------------------------------------
+    cp_data = []
+    for cp in control_points:
+        # Nächster GPX-Punkt anhand km-Marke
+        idx = min(int(cp["km"]), len(df) - 1)
+        cp_data.append({
+            "lon": df.iloc[idx]["lon"],
+            "lat": df.iloc[idx]["lat"],
+            "name": cp["name"]
+        })
+
+    if cp_data:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=cp_data,
+                get_position="[lon, lat]",
+                get_color=[0, 100, 255],
+                get_radius=90,
+            )
+        )
+
+    # ---------------------------------------------------------
+    # Pausenpunkte (gelb)
+    # ---------------------------------------------------------
+    pause_data = []
+    for p in pauses:
+        idx = min(int(p["km"]), len(df) - 1)
+        pause_data.append({
+            "lon": df.iloc[idx]["lon"],
+            "lat": df.iloc[idx]["lat"],
+        })
+
+    if pause_data:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=pause_data,
+                get_position="[lon, lat]",
+                get_color=[255, 220, 0],
+                get_radius=90,
+            )
+        )
+
+    # ---------------------------------------------------------
+    # Karte rendern
+    # ---------------------------------------------------------
     view_state = pdk.ViewState(
         latitude=midpoint[0],
         longitude=midpoint[1],
@@ -155,7 +243,7 @@ def show_map(df: pd.DataFrame):
         pitch=0,
     )
 
-    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
+    st.pydeck_chart(pdk.Deck(layers=layers, initial_view_state=view_state))
 
 
 # ---------------------------------------------------------
