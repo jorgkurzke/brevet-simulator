@@ -135,7 +135,13 @@ def speed_from_power(power, slope, mass, cda, crr, headwind):
     return v
 
 
+
 def sanitize_gpx(df):
+    st.write("DEBUG ELE RAW:", df["ele"].head(10).tolist())
+    st.write("DEBUG ELE TYPES:", df["ele"].apply(type).head(10).tolist())
+    st.write("DEBUG DF HEAD:", df.head())
+
+    
     df = df.copy()
 
     # --- Zeit robust bereinigen ---
