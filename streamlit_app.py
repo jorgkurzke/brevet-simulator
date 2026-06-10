@@ -142,4 +142,9 @@ if uploaded_files:
     for file in uploaded_files:
         st.subheader(f"📍 {file.name}")
 
-        df = parse_gpx(file
+        df = parse_gpx(file)   # ← WICHTIG: Klammer geschlossen!
+        st.dataframe(df)
+
+        all_dfs[file.name] = df
+        html_report += f"<h2>{file.name}</h2>"
+        html_report += df.to_html(index=False)
