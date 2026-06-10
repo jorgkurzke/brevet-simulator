@@ -359,11 +359,11 @@ if uploaded_files and len(uploaded_files) > 0:
             st.write("**Kontrollpunkte:**")
             st.dataframe(controls)
 
-    def safe_sheet_name(name, existing):
+def safe_sheet_name(name, existing):
     # Verbotene Zeichen entfernen
-        invalid = ['\\', '/', '?', '*', '[', ']']
-        for c in invalid:
-            name = name.replace(c, '')
+    invalid = ['\\', '/', '?', '*', '[', ']']
+    for c in invalid:
+        name = name.replace(c, '')
 
     # Leere Namen ersetzen
     if not name.strip():
@@ -384,22 +384,30 @@ if uploaded_files and len(uploaded_files) > 0:
     # Excel-Limit 31 Zeichen
     return final[:31]
 
-    
-    with BytesIO() as buffer:
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            existing_sheets = set()
-            sheet = safe_sheet_name(name, existing_sheets)
-            existing_sheets.add(sheet)
-            df.to_excel(writer, sheet_name=sheet, index=False)
-                if not controls.empty:
-                    controls.to_excel(writer, sheet_name=(name[:31] + "_CP"), index=False)
-        buffer.seek(0)
-        st.download_button(
-            "📥 Excel exportieren",
-            data=buffer,
-            file_name="brevet_simulation.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+
+with BytesIO() as buffer:
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+        existing_sheets = set()
+
+        # Track-Sheet
+        sheet = safe_sheet_name(name, existing_sheets)
+        existing_sheets.add(sheet)
+        df.to_excel(writer, sheet_name=sheet, index=False)
+
+        # Control-Point-Sheet
+        if not controls.empty:
+            cp_sheet = safe_sheet_name(name + "_CP", existing_sheets)
+            existing_sheets.add(cp_sheet)
+            controls.to_excel(writer, sheet_name=cp_sheet, index=False)
+
+    buffer.seek(0)
+    st.download_button(
+        "📥 Excel exportieren",
+        data=buffer,
+        file_name="brevet_simulation.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
     pdf_buffer = BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=A4)
