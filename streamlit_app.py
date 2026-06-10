@@ -138,12 +138,21 @@ def speed_from_power(power, slope, mass, cda, crr, headwind):
 def sanitize_gpx(df):
     df = df.copy()
 
+    # Höhenwerte robust bereinigen
+    df["ele"] = pd.to_numeric(df["ele"], errors="coerce")  # None → NaN
     df["ele"] = df["ele"].replace([np.inf, -np.inf], np.nan)
-    df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
 
+    # Falls ALLE Höhen fehlen → setze 0
+    if df["ele"].isna().all():
+        df["ele"] = 0
+    else:
+        df["ele"] = df["ele"].interpolate().fillna(method="bfill").fillna(method="ffill")
+
+    # Doppelte Punkte entfernen
     df = df.loc[~((df["lat"].diff() == 0) & (df["lon"].diff() == 0))]
 
     return df.reset_index(drop=True)
+
 
 
 def compute_stats(points):
