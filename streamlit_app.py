@@ -144,7 +144,64 @@ if uploaded_files:
 
         df = parse_gpx(file)   # ← WICHTIG: Klammer geschlossen!
         st.dataframe(df)
+        st.subheader("🗺️ Karte")
+        show_map(df)
+
+        st.subheader("⛰️ Höhenprofil")
+        show_elevation_profile(df)
+
 
         all_dfs[file.name] = df
         html_report += f"<h2>{file.name}</h2>"
         html_report += df.to_html(index=False)
+
+import pydeck as pdk
+
+def show_map(df: pd.DataFrame):
+    if df.empty:
+        st.warning("Keine GPS-Daten für die Karte.")
+        return
+
+    midpoint = (df["lat"].mean(), df["lon"].mean())
+
+    layer = pdk.Layer(
+        "PathLayer",
+        data=df,
+        get_path="coordinates",
+        get_color=[255, 0, 0],
+        width_scale=2,
+        width_min_pixels=2,
+    )
+
+    view_state = pdk.ViewState(
+        latitude=midpoint[0],
+        longitude=midpoint[1],
+        zoom=10,
+        pitch=0,
+    )
+
+    df["coordinates"] = df.apply(lambda r: [r["lon"], r["lat"]], axis=1)
+
+    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
+
+import altair as alt
+
+def show_elevation_profile(df: pd.DataFrame):
+    if "elevation" not in df or df["elevation"].isna().all():
+        st.info("Keine Höhendaten in dieser GPX-Datei.")
+        return
+
+    df["km"] = df.index / 1000  # grobe Distanz, falls keine Distanzspalte existiert
+
+    chart = (
+        alt.Chart(df)
+        .mark_line(color="green")
+        .encode(
+            x=alt.X("km:Q", title="Distanz (km)"),
+            y=alt.Y("elevation:Q", title="Höhe (m)")
+        )
+        .properties(height=250)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
