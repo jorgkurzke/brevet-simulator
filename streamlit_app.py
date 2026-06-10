@@ -263,7 +263,7 @@ def show_elevation_profile(df: pd.DataFrame):
     df["gradient"] = (df["delta_h"] / (df["delta_km"] * 1000)) * 100
     df["gradient"] = df["gradient"].fillna(0)
 
-    # Steigung glätten (optional)
+    # Steigung glätten
     df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
 
     # Farbcodierung nach Steigung
@@ -279,20 +279,24 @@ def show_elevation_profile(df: pd.DataFrame):
 
     df["color"] = df["gradient_smooth"].apply(gradient_color)
 
-    # Altair-Liniensegmente erzeugen
+    # Balken-Höhenprofil
     chart = (
         alt.Chart(df)
-        .mark_line()
+        .mark_bar()
         .encode(
             x=alt.X("km:Q", title="Distanz (km)"),
             y=alt.Y("elevation:Q", title="Höhe (m)"),
-            color=alt.Color("color:N", scale=None, legend=None)
+            color=alt.Color("color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("km:Q", title="km"),
+                alt.Tooltip("elevation:Q", title="Höhe (m)"),
+                alt.Tooltip("gradient_smooth:Q", title="Steigung (%)")
+            ]
         )
         .properties(height=250)
     )
 
     st.altair_chart(chart, use_container_width=True)
-
 
 # ---------------------------------------------------------
 # HAUPTBEREICH – GPX UPLOAD & ANALYSE
