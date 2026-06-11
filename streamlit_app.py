@@ -16,13 +16,13 @@ from reportlab.pdfgen import canvas
 # STREAMLIT CONFIG
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Brevet GPX Analyzer & Simulator",
+    page_title="Brevet Zeit Kalkulator",
     page_icon="🚴",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("Brevet GPX Analyzer & Simulator – Version B.2")
+st.title("Brevet Zeit Kalkulator")
 
 
 # ---------------------------------------------------------
