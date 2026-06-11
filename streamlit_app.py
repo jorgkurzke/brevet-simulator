@@ -32,10 +32,6 @@ st.sidebar.header("⚙️ Simulationseinstellungen")
 
 st.sidebar.subheader("Leistung")
 ftp = st.sidebar.number_input("FTP (Watt)", min_value=100, max_value=400, value=220, step=5)
-power_flat = st.sidebar.number_input("Leistung flach (W)", min_value=80, max_value=400, value=180)
-power_climb = st.sidebar.number_input("Leistung bergauf (W)", min_value=80, max_value=400, value=220)
-power_light_downhill = st.sidebar.number_input("Leistung leicht bergab (W)", min_value=0, max_value=250, value=80)
-power_heavy_downhill = st.sidebar.number_input("Leistung stark bergab (W)", min_value=0, max_value=200, value=0)
 
 st.sidebar.subheader("Aerodynamik")
 c_dA = st.sidebar.number_input("CdA (m²)", min_value=0.15, max_value=0.40, value=0.28, step=0.01)
@@ -56,10 +52,6 @@ st.sidebar.subheader("Geschwindigkeitsgrenzen")
 max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", min_value=40, max_value=120, value=70)
 min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", min_value=2, max_value=15, value=4)
 
-st.sidebar.subheader("Gefälle‑Schwellen")
-light_downhill_limit = st.sidebar.number_input("Leichtes Gefälle bis (%)", min_value=-10.0, max_value=0.0, value=-3.0)
-heavy_downhill_limit = st.sidebar.number_input("Starkes Gefälle ab (%)", min_value=-20.0, max_value=-3.0, value=-6.0)
-
 st.sidebar.header("⏱ ACP‑Start")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
 start_time = st.sidebar.time_input("Startzeit", datetime.now().time())
@@ -67,11 +59,10 @@ start_datetime = datetime.combine(start_date, start_time)
 
 
 # ---------------------------------------------------------
-# SIDEBAR – ZIELGESCHWINDIGKEITEN (FTP-kalibriert)
+# ZIELGESCHWINDIGKEITEN (FTP-kalibriert)
 # ---------------------------------------------------------
 st.sidebar.header("🎯 Zielgeschwindigkeiten pro Steigung")
 
-# Basiswerte für 220 W
 base_flat = 26
 base_light_down = 32
 base_down = 50
@@ -80,32 +71,19 @@ base_med_up = 16
 base_steep_up = 12
 base_very_steep_up = 8
 
-# FTP-Skalierung (sanft)
 ftp_factor = (ftp / 220) ** 0.35
 
-default_flat = round(base_flat * ftp_factor, 1)
-default_light_down = round(base_light_down * ftp_factor, 1)
-default_down = round(base_down * ftp_factor, 1)
-default_light_up = round(base_light_up * ftp_factor, 1)
-default_med_up = round(base_med_up * ftp_factor, 1)
-default_steep_up = round(base_steep_up * ftp_factor, 1)
-default_very_steep_up = round(base_very_steep_up * ftp_factor, 1)
+target_speed_flat = st.sidebar.number_input("Flach (−1% bis +1%) (km/h)", 10.0, 45.0, round(base_flat * ftp_factor, 1))
+target_speed_light_down = st.sidebar.number_input("Leicht bergab (−3% bis −1%) (km/h)", 10.0, 70.0, round(base_light_down * ftp_factor, 1))
+target_speed_down = st.sidebar.number_input("Stark bergab (< −3%) (km/h)", 10.0, 120.0, round(base_down * ftp_factor, 1))
 
-target_speed_flat = st.sidebar.number_input("Flach (−1% bis +1%) (km/h)", 10.0, 45.0, default_flat)
-target_speed_light_down = st.sidebar.number_input("Leicht bergab (−3% bis −1%) (km/h)", 10.0, 70.0, default_light_down)
-target_speed_down = st.sidebar.number_input("Stark bergab (< −3%) (km/h)", 10.0, 120.0, default_down)
-
-target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%) (km/h)", 5.0, 40.0, default_light_up)
-target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%) (km/h)", 5.0, 35.0, default_med_up)
-target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%) (km/h)", 3.0, 30.0, default_steep_up)
-target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%) (km/h)", 2.0, 25.0, default_very_steep_up)
+target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%) (km/h)", 5.0, 40.0, round(base_light_up * ftp_factor, 1))
+target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%) (km/h)", 5.0, 35.0, round(base_med_up * ftp_factor, 1))
+target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%) (km/h)", 3.0, 30.0, round(base_steep_up * ftp_factor, 1))
+target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%) (km/h)", 2.0, 25.0, round(base_very_steep_up * ftp_factor, 1))
 
 
-# ---------------------------------------------------------
-# VISUALISIERUNG DER ZIELGESCHWINDIGKEITEN
-# ---------------------------------------------------------
 st.sidebar.subheader("📊 Zielgeschwindigkeiten Übersicht")
-
 target_df = pd.DataFrame([
     {"Kategorie": "Stark bergab (< -3%)", "v_kmh": target_speed_down},
     {"Kategorie": "Leicht bergab (-3% bis -1%)", "v_kmh": target_speed_light_down},
@@ -115,33 +93,30 @@ target_df = pd.DataFrame([
     {"Kategorie": "Stärker bergauf (6–10%)", "v_kmh": target_speed_steep_up},
     {"Kategorie": "Sehr steil (>10%)", "v_kmh": target_speed_very_steep_up},
 ])
-
-target_chart = (
+st.sidebar.altair_chart(
     alt.Chart(target_df)
     .mark_bar()
-    .encode(
-        x=alt.X("v_kmh:Q", title="Zielgeschwindigkeit (km/h)"),
-        y=alt.Y("Kategorie:N", sort=None),
-    )
-    .properties(height=250)
+    .encode(x="v_kmh:Q", y="Kategorie:N")
+    .properties(height=250),
+    use_container_width=True
 )
-st.sidebar.altair_chart(target_chart, use_container_width=True)
 
 
 # ---------------------------------------------------------
-# SIDEBAR – KONTROLLPUNKTE
+# KONTROLLPUNKTE – MIT RESET FIX
 # ---------------------------------------------------------
 st.sidebar.header("📍 Kontrollpunkte")
 
 if "control_points" not in st.session_state:
     st.session_state["control_points"] = []
 
-if "new_cp_km" not in st.session_state:
-    st.session_state["new_cp_km"] = 0.0
-if "new_cp_name" not in st.session_state:
-    st.session_state["new_cp_name"] = ""
-if "new_cp_pause" not in st.session_state:
-    st.session_state["new_cp_pause"] = 0
+for key, default in [
+    ("new_cp_km", 0.0),
+    ("new_cp_name", ""),
+    ("new_cp_pause", 0),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 new_cp_km = st.sidebar.number_input(
     "KM für neuen Kontrollpunkt",
@@ -149,12 +124,10 @@ new_cp_km = st.sidebar.number_input(
     step=1.0,
     value=st.session_state["new_cp_km"]
 )
-
 new_cp_name = st.sidebar.text_input(
     "Name des Kontrollpunkts",
     value=st.session_state["new_cp_name"]
 )
-
 new_cp_pause = st.sidebar.number_input(
     "Pause an Kontrollpunkt (Minuten)",
     min_value=0,
@@ -168,31 +141,29 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
         "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}",
         "pause_min": new_cp_pause
     })
-
-    # Felder zurücksetzen
     st.session_state["new_cp_km"] = 0.0
     st.session_state["new_cp_name"] = ""
     st.session_state["new_cp_pause"] = 0
-
     st.experimental_rerun()
-
 
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
 
 
 # ---------------------------------------------------------
-# SIDEBAR – PAUSENPUNKTE
+# PAUSENPUNKTE – MIT RESET FIX
 # ---------------------------------------------------------
 st.sidebar.header("⏸ Pausenpunkte")
 
 if "pauses" not in st.session_state:
     st.session_state["pauses"] = []
 
-if "new_pause_km" not in st.session_state:
-    st.session_state["new_pause_km"] = 0.0
-if "new_pause_min" not in st.session_state:
-    st.session_state["new_pause_min"] = 0
+for key, default in [
+    ("new_pause_km", 0.0),
+    ("new_pause_min", 0),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 new_pause_km = st.sidebar.number_input(
     "KM für neue Pause",
@@ -200,7 +171,6 @@ new_pause_km = st.sidebar.number_input(
     step=1.0,
     value=st.session_state["new_pause_km"]
 )
-
 new_pause_min = st.sidebar.number_input(
     "Pausendauer (Minuten)",
     min_value=0,
@@ -213,12 +183,9 @@ if st.sidebar.button("Pause hinzufügen"):
         "km": new_pause_km,
         "pause_min": new_pause_min
     })
-
     st.session_state["new_pause_km"] = 0.0
     st.session_state["new_pause_min"] = 0
-
     st.experimental_rerun()
-
 
 for p in st.session_state["pauses"]:
     st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
@@ -232,14 +199,6 @@ def safe_sheet_name(name: str) -> str:
     for ch in invalid_chars:
         name = name.replace(ch, '_')
     return name[:31]
-
-
-def export_to_excel(dfs: dict) -> bytes:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        for sheet_name, df in dfs.items():
-            df.to_excel(writer, sheet_name=safe_sheet_name(sheet_name), index=False)
-    return output.getvalue()
 
 
 def parse_gpx(file) -> pd.DataFrame:
@@ -297,7 +256,7 @@ def add_distance_and_gradient(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------
-# ZIELGESCHWINDIGKEITS-MODELL (kategorienbasiert, FTP-sensitiv)
+# ZIELGESCHWINDIGKEITS-MODELL
 # ---------------------------------------------------------
 def compute_segment_speed_category(
     gradient,
@@ -347,7 +306,7 @@ def compute_segment_speed_category(
 
 
 # ---------------------------------------------------------
-# TIME PROFILE (Simulation)
+# TIME PROFILE
 # ---------------------------------------------------------
 def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
     times = [0.0]
@@ -517,18 +476,8 @@ def show_elevation_profile(df: pd.DataFrame):
         return
 
     df_plot = df.copy()
-
-    df_plot["elevation_smooth"] = (
-        df_plot["elevation"]
-        .rolling(window=25, center=True, min_periods=1)
-        .mean()
-    )
-
-    df_plot["gradient_smooth"] = (
-        df_plot["gradient"]
-        .rolling(window=25, center=True, min_periods=1)
-        .mean()
-    )
+    df_plot["elevation_smooth"] = df_plot["elevation"].rolling(window=25, center=True, min_periods=1).mean()
+    df_plot["gradient_smooth"] = df_plot["gradient"].rolling(window=25, center=True, min_periods=1).mean()
 
     def gradient_color(g):
         if g < 2:
@@ -557,7 +506,7 @@ def show_elevation_profile(df: pd.DataFrame):
 
 
 # ---------------------------------------------------------
-# SPEED CURVE VISUALIZATION
+# SPEED CURVE
 # ---------------------------------------------------------
 def show_speed_curve(df: pd.DataFrame):
     if "speed_kmh" not in df:
@@ -578,7 +527,7 @@ def show_speed_curve(df: pd.DataFrame):
 
 
 # ---------------------------------------------------------
-# PAUSEN IN ZEITRECHNUNG (Option 2)
+# PAUSEN IN ZEITRECHNUNG
 # ---------------------------------------------------------
 def apply_pauses(df: pd.DataFrame, control_points, pauses):
     total_pause_s = 0.0
@@ -617,36 +566,17 @@ def apply_pauses(df: pd.DataFrame, control_points, pauses):
 
 
 # ---------------------------------------------------------
-# SUMMARY TABLE (Start, CPs, Pausen, Ziel)
+# SUMMARY TABLE
 # ---------------------------------------------------------
 def build_summary_table(df, control_points, pauses):
     points = []
 
-    points.append({
-        "km": 0.0,
-        "name": "Start",
-        "pause_min": 0
-    })
-
+    points.append({"km": 0.0, "name": "Start", "pause_min": 0})
     for cp in control_points:
-        points.append({
-            "km": float(cp["km"]),
-            "name": cp["name"],
-            "pause_min": cp.get("pause_min", 0)
-        })
-
+        points.append({"km": float(cp["km"]), "name": cp["name"], "pause_min": cp.get("pause_min", 0)})
     for p in pauses:
-        points.append({
-            "km": float(p["km"]),
-            "name": "Pause",
-            "pause_min": p.get("pause_min", 0)
-        })
-
-    points.append({
-        "km": float(df["km"].iloc[-1]),
-        "name": "Ziel",
-        "pause_min": 0
-    })
+        points.append({"km": float(p["km"]), "name": "Pause", "pause_min": p.get("pause_min", 0)})
+    points.append({"km": float(df["km"].iloc[-1]), "name": "Ziel", "pause_min": 0})
 
     points = sorted(points, key=lambda x: x["km"])
 
@@ -745,7 +675,7 @@ if uploaded_files:
         )
         st.dataframe(summary_df)
 
-        # Zusammenfassung als Excel exportieren
+        # Zusammenfassung als Excel
         summary_excel = BytesIO()
         with pd.ExcelWriter(summary_excel, engine="xlsxwriter") as writer:
             summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
@@ -757,7 +687,7 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # Zusammenfassung als PDF exportieren
+        # Zusammenfassung als PDF
         pdf_buffer = BytesIO()
         c = canvas.Canvas(pdf_buffer, pagesize=A4)
         width, height = A4
@@ -765,8 +695,7 @@ if uploaded_files:
         text = c.beginText(40, height - 40)
         text.setFont("Helvetica", 9)
 
-        header = "Brevet Zusammenfassung"
-        text.textLine(header)
+        text.textLine("Brevet Zusammenfassung")
         text.textLine("")
 
         for i, row in summary_df.iterrows():
@@ -797,15 +726,22 @@ if uploaded_files:
 
         all_dfs[file.name] = df
 
-    excel_bytes = export_to_excel(all_dfs)
+    # Gesamtexport aller Daten
+    excel_all = BytesIO()
+    with pd.ExcelWriter(excel_all, engine="xlsxwriter") as writer:
+        for name, df in all_dfs.items():
+            sheet = safe_sheet_name(name)
+            df.to_excel(writer, sheet_name=sheet, index=False)
+
     st.download_button(
         label="📥 Excel Export (alle Daten)",
-        data=excel_bytes,
+        data=excel_all.getvalue(),
         file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
