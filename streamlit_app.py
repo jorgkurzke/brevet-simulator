@@ -653,40 +653,74 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # -----------------------------
-        # PDF EXPORT
-        # -----------------------------
+        # -------------------------------------------------------------
+        # PDF EXPORT – SAUBERE TABELLE
+        # -------------------------------------------------------------
         pdf_buffer = BytesIO()
         c = canvas.Canvas(pdf_buffer, pagesize=A4)
         width, height = A4
-
-        text = c.beginText(40, height - 40)
-        text.setFont("Helvetica", 9)
-
-        text.textLine("Brevet Zusammenfassung")
-        text.textLine("")
-
+        
+        # Tabellen-Startposition
+        x0 = 30
+        y0 = height - 40
+        line_height = 14
+        
+        # Titel
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(x0, y0, "Brevet Zusammenfassung")
+        y0 -= 25
+        
+        # Spaltenüberschriften
+        headers = [
+            "Name", "KM ges.", "KM Abschn.", "HM ges.", "HM Abschn.",
+            "Zeit gesamt", "Zeit Abschnitt", "Pause"
+        ]
+        
+        c.setFont("Helvetica-Bold", 9)
+        x_positions = [30, 120, 170, 230, 280, 330, 420, 510]
+        
+        for x, h in zip(x_positions, headers):
+            c.drawString(x, y0, h)
+        
+        y0 -= 12
+        c.line(25, y0, width - 25, y0)
+        y0 -= 10
+        
+        # Tabelleninhalt
+        c.setFont("Helvetica", 9)
+        
         for _, row in summary_df.iterrows():
-            line = ", ".join(f"{col}: {row[col]}" for col in summary_df.columns)
-            text.textLine(line)
-            text.textLine("")
-
-            if text.getY() < 60:
-                c.drawText(text)
+            values = [
+                row["Name"],
+                row["KM gesamt"],
+                row["KM Abschnitt"],
+                row["HM gesamt"],
+                row["HM Abschnitt"],
+                row["Zeit gesamt"],
+                row["Zeit Abschnitt"],
+                row["Pause (min)"],
+            ]
+        
+            for x, v in zip(x_positions, values):
+                c.drawString(x, y0, str(v))
+        
+            y0 -= line_height
+        
+            # Neue Seite falls nötig
+            if y0 < 40:
                 c.showPage()
-                text = c.beginText(40, height - 40)
-                text.setFont("Helvetica", 9)
-
-        c.drawText(text)
-        c.showPage()
+                y0 = height - 40
+                c.setFont("Helvetica", 9)
+        
         c.save()
-
+        
         st.download_button(
             label="📄 Zusammenfassung als PDF",
             data=pdf_buffer.getvalue(),
             file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
+
 
         # -----------------------------
         # ANKUNFTSZEIT
