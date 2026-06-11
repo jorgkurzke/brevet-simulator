@@ -10,6 +10,9 @@ import altair as alt
 import xml.etree.ElementTree as ET
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+import locale
+locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
+
 
 
 # ---------------------------------------------------------
