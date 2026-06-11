@@ -136,9 +136,31 @@ st.sidebar.header("📍 Kontrollpunkte")
 if "control_points" not in st.session_state:
     st.session_state["control_points"] = []
 
-new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0, key="new_cp_km")
-new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts", key="new_cp_name")
-new_cp_pause = st.sidebar.number_input("Pause an Kontrollpunkt (Minuten)", min_value=0, max_value=240, value=0, key="new_cp_pause")
+if "new_cp_km" not in st.session_state:
+    st.session_state["new_cp_km"] = 0.0
+if "new_cp_name" not in st.session_state:
+    st.session_state["new_cp_name"] = ""
+if "new_cp_pause" not in st.session_state:
+    st.session_state["new_cp_pause"] = 0
+
+new_cp_km = st.sidebar.number_input(
+    "KM für neuen Kontrollpunkt",
+    min_value=0.0,
+    step=1.0,
+    value=st.session_state["new_cp_km"]
+)
+
+new_cp_name = st.sidebar.text_input(
+    "Name des Kontrollpunkts",
+    value=st.session_state["new_cp_name"]
+)
+
+new_cp_pause = st.sidebar.number_input(
+    "Pause an Kontrollpunkt (Minuten)",
+    min_value=0,
+    max_value=240,
+    value=st.session_state["new_cp_pause"]
+)
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["control_points"].append({
@@ -146,9 +168,14 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
         "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}",
         "pause_min": new_cp_pause
     })
+
+    # Felder zurücksetzen
     st.session_state["new_cp_km"] = 0.0
     st.session_state["new_cp_name"] = ""
     st.session_state["new_cp_pause"] = 0
+
+    st.experimental_rerun()
+
 
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
@@ -162,16 +189,36 @@ st.sidebar.header("⏸ Pausenpunkte")
 if "pauses" not in st.session_state:
     st.session_state["pauses"] = []
 
-new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0, key="new_pause_km")
-new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", min_value=0, max_value=240, value=0, key="new_pause_min")
+if "new_pause_km" not in st.session_state:
+    st.session_state["new_pause_km"] = 0.0
+if "new_pause_min" not in st.session_state:
+    st.session_state["new_pause_min"] = 0
+
+new_pause_km = st.sidebar.number_input(
+    "KM für neue Pause",
+    min_value=0.0,
+    step=1.0,
+    value=st.session_state["new_pause_km"]
+)
+
+new_pause_min = st.sidebar.number_input(
+    "Pausendauer (Minuten)",
+    min_value=0,
+    max_value=240,
+    value=st.session_state["new_pause_min"]
+)
 
 if st.sidebar.button("Pause hinzufügen"):
     st.session_state["pauses"].append({
         "km": new_pause_km,
         "pause_min": new_pause_min
     })
+
     st.session_state["new_pause_km"] = 0.0
     st.session_state["new_pause_min"] = 0
+
+    st.experimental_rerun()
+
 
 for p in st.session_state["pauses"]:
     st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
