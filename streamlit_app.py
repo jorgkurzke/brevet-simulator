@@ -260,7 +260,6 @@ def compute_segment_speed_category(
 ):
     g = gradient
 
-    # Kategorie bestimmen
     if g < -3:
         base = target_speed_down
         regime = "stark bergab"
@@ -283,11 +282,9 @@ def compute_segment_speed_category(
         base = target_speed_very_steep_up
         regime = "sehr steil bergauf"
 
-    # FTP-Skalierung (leicht, da Zielwerte schon FTP-basiert sind)
     ftp_factor_local = (ftp / 220) ** 0.15
     v = base * ftp_factor_local
 
-    # Grenzen
     if g < 0:
         v = min(v, max_downhill_speed)
     v = max(v, min_speed)
@@ -299,7 +296,7 @@ def compute_segment_speed_category(
 # TIME PROFILE (Simulation)
 # ---------------------------------------------------------
 def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
-    times = [0.0]  # Sekunden seit Start
+    times = [0.0]
     speeds_kmh = [0.0]
     regime_list = ["start"]
 
@@ -374,7 +371,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             data=[{"lon": start[0], "lat": start[1], "name": "Start", "pause_min": 0}],
             get_position="[lon, lat]",
             get_color=[0, 200, 0],
-            get_radius=200,
+            get_radius=1200,
         )
     )
 
@@ -384,7 +381,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             data=[{"lon": end[0], "lat": end[1], "name": "Ziel", "pause_min": 0}],
             get_position="[lon, lat]",
             get_color=[0, 0, 0],
-            get_radius=200,
+            get_radius=1200,
         )
     )
 
@@ -409,7 +406,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
                 data=cp_data,
                 get_position="[lon, lat]",
                 get_color=[0, 100, 255],
-                get_radius=250,
+                get_radius=1500,
             )
         )
 
@@ -434,7 +431,7 @@ def show_map(df: pd.DataFrame, control_points, pauses):
                 data=pause_data,
                 get_position="[lon, lat]",
                 get_color=[255, 220, 0],
-                get_radius=250,
+                get_radius=1500,
             )
         )
 
@@ -466,7 +463,18 @@ def show_elevation_profile(df: pd.DataFrame):
         return
 
     df_plot = df.copy()
-    df_plot["gradient_smooth"] = df_plot["gradient"].rolling(window=15, center=True, min_periods=1).mean()
+
+    df_plot["elevation_smooth"] = (
+        df_plot["elevation"]
+        .rolling(window=25, center=True, min_periods=1)
+        .mean()
+    )
+
+    df_plot["gradient_smooth"] = (
+        df_plot["gradient"]
+        .rolling(window=25, center=True, min_periods=1)
+        .mean()
+    )
 
     def gradient_color(g):
         if g < 2:
@@ -485,7 +493,7 @@ def show_elevation_profile(df: pd.DataFrame):
         .mark_bar()
         .encode(
             x=alt.X("km:Q", title="Distanz (km)"),
-            y=alt.Y("elevation:Q", title="Höhe (m)"),
+            y=alt.Y("elevation_smooth:Q", title="Höhe (m)"),
             color=alt.Color("color:N", scale=None, legend=None),
         )
         .properties(height=250)
@@ -582,8 +590,8 @@ def build_summary_table(df, control_points, pauses):
 
     points.append({
         "km": float(df["km"].iloc[-1]),
-        "name": "Ziel",
-        "pause_min": 0
+            "name": "Ziel",
+            "pause_min": 0
     })
 
     points = sorted(points, key=lambda x: x["km"])
@@ -699,6 +707,7 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
