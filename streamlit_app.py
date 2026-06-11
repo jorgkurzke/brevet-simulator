@@ -45,6 +45,13 @@ for key, value in DEFAULTS.items():
 # ---------------------------------------------------------
 # SIDEBAR – SIMULATION
 # ---------------------------------------------------------
+# Brevet Daten
+st.sidebar.subheader("Brevet Daten")
+start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
+start_time = st.sidebar.time_input("Startzeit", datetime.now().time())
+start_datetime = datetime.combine(start_date, start_time)
+
+
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
 ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 220, 5)
@@ -54,6 +61,9 @@ st.sidebar.subheader("Leistungsprofile")
 power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
 power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
+max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", 40, 120, 70)
+min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", 2, 15, 4)
+
 
 # Rad-Daten
 st.sidebar.subheader("Rad Daten")
@@ -75,12 +85,8 @@ wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
 
 
 
-max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", 40, 120, 70)
-min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", 2, 15, 4)
 
-start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
-start_time = st.sidebar.time_input("Startzeit", datetime.now().time())
-start_datetime = datetime.combine(start_date, start_time)
+
 
 
 # ---------------------------------------------------------
