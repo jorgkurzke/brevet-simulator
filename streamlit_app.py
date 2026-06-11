@@ -51,13 +51,6 @@ start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
 start_time = st.sidebar.time_input("Startzeit", datetime.now().time())
 start_datetime = datetime.combine(start_date, start_time)
 
-if "start_datetime" not in st.session_state:
-    st.session_state["start_datetime"] = start_datetime
-
-# Wenn der User die Startzeit ändert → aktualisieren
-if st.session_state["start_datetime"] != start_datetime:
-    st.session_state["start_datetime"] = start_datetime
-    st.session_state["trigger_rerun"] = True
 
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
@@ -337,12 +330,9 @@ def add_time_profile(df):
 
     df["speed_kmh"] = speeds
     df["time_s"] = times
-    df["sim_time"] = [
-        st.session_state["start_datetime"] + timedelta(seconds=t)
-        for t in times
-    ]
-
+    df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
     return df
+    
 
 
 # ---------------------------------------------------------
