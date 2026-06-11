@@ -550,13 +550,13 @@ def build_summary_table(df, control_points, pauses):
         rows.append({
             "Name": p["name"],
             "KM gesamt": round(km_total, 2),
-            "KM seit letztem Punkt": round(km_diff, 2),
+            "KM Abschnitt": round(km_diff, 2),
             "HM gesamt": round(elev_total, 0),
-            "HM seit letztem Punkt": round(elev_diff, 0),
+            "HM Abschnitt": round(elev_diff, 0),
             "Zeit gesamt": time_total.strftime("%H:%M:%S"),
-            "Zeit seit letztem Punkt": str(time_diff),
-            "Ø‑Speed gesamt (km/h)": round(avg_speed_total, 1),
-            "Ø‑Speed Abschnitt (km/h)": round(avg_speed_diff, 1),
+            "Zeit Abschnitt": str(time_diff),
+            "Ø‑km/h gesamt": round(avg_speed_total, 1),
+            "Ø‑km/h Abschnitt": round(avg_speed_diff, 1),
             "Pause (min)": p["pause_min"]
         })
 
@@ -564,7 +564,19 @@ def build_summary_table(df, control_points, pauses):
         last_time = time_total
         last_elev = elev_total
 
-    return pd.DataFrame(rows)
+        return pd.DataFrame(rows)[[
+        "Name",
+        "KM gesamt",
+        "KM Abschnitt",
+        "HM gesamt",
+        "HM Abschnitt",
+        "Zeit gesamt",
+        "Zeit Abschnitt",
+        "Ø‑km/h gesamt",
+        "Ø‑km/h Abschnitt",  
+        "Pause (min)"
+    ]]
+
 # ---------------------------------------------------------
 # MAIN – GPX UPLOAD
 # ---------------------------------------------------------
@@ -672,13 +684,13 @@ if uploaded_files:
         
         # Spaltenüberschriften
         headers = [
-            "Name", "KM ges.", "KM Abschn.", "HM ges.", "HM Abschn.",
-            "Zeit gesamt", "Zeit Abschnitt", "Pause"
+            "Name", "KM gesamt", "KM Abschnitt", "HM gesamt", "HM Abschnitt",
+            "Zeit gesamt", "Zeit Abschnitt", "Ø‑km/h gesamt", "Ø‑km/h Abschnitt", "Pause (min)"
         ]
         
-        c.setFont("Helvetica-Bold", 9)
         x_positions = [30, 120, 170, 230, 280, 330, 420, 510]
         
+        c.setFont("Helvetica-Bold", 9)
         for x, h in zip(x_positions, headers):
             c.drawString(x, y0, h)
         
@@ -698,6 +710,8 @@ if uploaded_files:
                 row["HM Abschnitt"],
                 row["Zeit gesamt"],
                 row["Zeit Abschnitt"],
+                row["Ø‑km/h gesamt"],
+                row["Ø‑km/h Abschnitt"],
                 row["Pause (min)"],
             ]
         
@@ -706,32 +720,13 @@ if uploaded_files:
         
             y0 -= line_height
         
-            # Neue Seite falls nötig
             if y0 < 40:
                 c.showPage()
                 y0 = height - 40
                 c.setFont("Helvetica", 9)
         
         c.save()
-        
-        st.download_button(
-            label="📄 Zusammenfassung als PDF",
-            data=pdf_buffer.getvalue(),
-            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
 
-
-        # -----------------------------
-        # ANKUNFTSZEIT
-        # -----------------------------
-        finish_time = df.sim_time_with_pauses.iloc[-1]
-        total_time = finish_time - start_datetime
-
-        st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time}")
-        st.markdown(f"**Gesamtzeit:** {total_time}")
-
-        all_dfs[file.name] = df
 
     # -----------------------------------------------------
     # GESAMT-EXCEL EXPORT
