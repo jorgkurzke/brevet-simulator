@@ -45,11 +45,22 @@ for key, value in DEFAULTS.items():
 # ---------------------------------------------------------
 # SIDEBAR – SIMULATION
 # ---------------------------------------------------------
+if "start_date" not in st.session_state:
+    st.session_state["start_date"] = datetime.now().date()
+
+if "start_time" not in st.session_state:
+    st.session_state["start_time"] = datetime.now().time()
+
 # Brevet Daten
 st.sidebar.subheader("Brevet Daten")
-start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
-start_time = st.sidebar.time_input("Startzeit", datetime.now().time())
-start_datetime = datetime.combine(start_date, start_time)
+start_date = st.sidebar.date_input("Startdatum", st.session_state["start_date"])
+start_time = st.sidebar.time_input("Startzeit", st.session_state["start_time"])
+st.session_state["start_date"] = start_date
+st.session_state["start_time"] = start_time
+start_datetime = datetime.combine(
+    st.session_state["start_date"],
+    st.session_state["start_time"]
+)
 
 
 st.sidebar.header("⚙️ Simulationseinstellungen")
