@@ -632,7 +632,7 @@ if uploaded_files:
         # ZUSAMMENFASSUNG
         # -----------------------------
         st.subheader("📋 Kontroll‑ & Pausentabelle")
-        summary_df = build_summary(df)
+        summary_df = build_summary_table(df)
         st.dataframe(summary_df)
 
         # -----------------------------
