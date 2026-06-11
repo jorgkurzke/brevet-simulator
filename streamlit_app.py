@@ -65,6 +65,68 @@ start_datetime = datetime.combine(start_date, start_time)
 
 
 # ---------------------------------------------------------
+# SIDEBAR – ZIELGESCHWINDIGKEITEN (FTP-kalibriert)
+# ---------------------------------------------------------
+st.sidebar.header("🎯 Zielgeschwindigkeiten pro Steigung")
+
+# Basiswerte für 220 W
+base_flat = 26
+base_light_down = 32
+base_down = 50
+base_light_up = 20
+base_med_up = 16
+base_steep_up = 12
+base_very_steep_up = 8
+
+# FTP-Skalierung (sanft)
+ftp_factor = (ftp / 220) ** 0.35
+
+default_flat = round(base_flat * ftp_factor, 1)
+default_light_down = round(base_light_down * ftp_factor, 1)
+default_down = round(base_down * ftp_factor, 1)
+default_light_up = round(base_light_up * ftp_factor, 1)
+default_med_up = round(base_med_up * ftp_factor, 1)
+default_steep_up = round(base_steep_up * ftp_factor, 1)
+default_very_steep_up = round(base_very_steep_up * ftp_factor, 1)
+
+target_speed_flat = st.sidebar.number_input("Flach (−1% bis +1%) (km/h)", 10.0, 45.0, default_flat)
+target_speed_light_down = st.sidebar.number_input("Leicht bergab (−3% bis −1%) (km/h)", 10.0, 70.0, default_light_down)
+target_speed_down = st.sidebar.number_input("Stark bergab (< −3%) (km/h)", 10.0, 120.0, default_down)
+
+target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%) (km/h)", 5.0, 40.0, default_light_up)
+target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%) (km/h)", 5.0, 35.0, default_med_up)
+target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%) (km/h)", 3.0, 30.0, default_steep_up)
+target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%) (km/h)", 2.0, 25.0, default_very_steep_up)
+
+
+# ---------------------------------------------------------
+# VISUALISIERUNG DER ZIELGESCHWINDIGKEITEN
+# ---------------------------------------------------------
+st.sidebar.subheader("📊 Zielgeschwindigkeiten Übersicht")
+
+target_df = pd.DataFrame([
+    {"Kategorie": "Stark bergab (< -3%)", "v_kmh": target_speed_down},
+    {"Kategorie": "Leicht bergab (-3% bis -1%)", "v_kmh": target_speed_light_down},
+    {"Kategorie": "Flach (-1% bis +1%)", "v_kmh": target_speed_flat},
+    {"Kategorie": "Leicht bergauf (1–3%)", "v_kmh": target_speed_light_up},
+    {"Kategorie": "Mäßig bergauf (3–6%)", "v_kmh": target_speed_med_up},
+    {"Kategorie": "Stärker bergauf (6–10%)", "v_kmh": target_speed_steep_up},
+    {"Kategorie": "Sehr steil (>10%)", "v_kmh": target_speed_very_steep_up},
+])
+
+target_chart = (
+    alt.Chart(target_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("v_kmh:Q", title="Zielgeschwindigkeit (km/h)"),
+        y=alt.Y("Kategorie:N", sort=None),
+    )
+    .properties(height=250)
+)
+st.sidebar.altair_chart(target_chart, use_container_width=True)
+
+
+# ---------------------------------------------------------
 # SIDEBAR – KONTROLLPUNKTE
 # ---------------------------------------------------------
 st.sidebar.header("📍 Kontrollpunkte")
@@ -181,92 +243,56 @@ def add_distance_and_gradient(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------
-# PHYSICS – REALISTIC SPEED MODEL WITH FORCES
+# ZIELGESCHWINDIGKEITS-MODELL (kategorienbasiert, FTP-sensitiv)
 # ---------------------------------------------------------
-def compute_segment_speed(
+def compute_segment_speed_category(
     gradient,
-    wind_speed_kmh,
-    wind_angle_deg,
-    c_rr,
-    c_dA,
-    air_density,
-    weight_total,
-    power_flat,
-    power_climb,
-    power_light_downhill,
-    power_heavy_downhill,
-    max_downhill_speed_kmh,
-    min_speed_kmh,
-    light_downhill_limit,
-    heavy_downhill_limit
+    ftp,
+    target_speed_flat,
+    target_speed_light_down,
+    target_speed_down,
+    target_speed_light_up,
+    target_speed_med_up,
+    target_speed_steep_up,
+    target_speed_very_steep_up,
+    max_downhill_speed,
+    min_speed
 ):
-    g = 9.81
-    m = weight_total
-    rho = air_density
+    g = gradient
 
-    # Wind
-    wind_ms = wind_speed_kmh / 3.6
-    wind_factor = math.cos(math.radians(wind_angle_deg))
-    effective_wind = wind_ms * wind_factor
-
-    slope = gradient / 100.0
-
-    # --- 1) Starkes Gefälle ---
-    if gradient <= heavy_downhill_limit:
-        regime = "heavy_downhill"
-        v = 12.0  # Startwert
-
-        for _ in range(40):
-            F_grav = m * g * abs(slope)
-            F_roll = m * g * c_rr
-            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
-
-            net = F_grav - F_roll - F_aero
-            v = max(0.1, v + 0.25 * net)
-
-        return min(v * 3.6, max_downhill_speed_kmh), F_grav, F_roll, F_aero, regime
-
-    # --- 2) Leichtes Gefälle ---
-    if light_downhill_limit < gradient < 0:
-        regime = "light_downhill"
-        P = power_light_downhill
-
-        # realistische Startgeschwindigkeit
-        v = 7.0  # m/s = 25 km/h
-
-        for _ in range(40):
-            F_roll = m * g * c_rr
-            F_grav = m * g * abs(slope)
-            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
-
-            F_total = F_roll + F_aero - F_grav
-
-            # BestBikeSplit‑ähnlicher Integrator
-            v = max(0.1, v + 0.15 * (P - F_total * v) / (m * v))
-
-        return min(v * 3.6, max_downhill_speed_kmh), F_grav, F_roll, F_aero, regime
-
-    # --- 3) Flach / Bergauf ---
-    if gradient > 1.0:
-        regime = "climb"
-        P = power_climb
+    # Kategorie bestimmen
+    if g < -3:
+        base = target_speed_down
+        regime = "stark bergab"
+    elif -3 <= g < -1:
+        base = target_speed_light_down
+        regime = "leicht bergab"
+    elif -1 <= g <= 1:
+        base = target_speed_flat
+        regime = "flach"
+    elif 1 < g <= 3:
+        base = target_speed_light_up
+        regime = "leicht bergauf"
+    elif 3 < g <= 6:
+        base = target_speed_med_up
+        regime = "mäßig bergauf"
+    elif 6 < g <= 10:
+        base = target_speed_steep_up
+        regime = "stärker bergauf"
     else:
-        regime = "flat"
-        P = power_flat
+        base = target_speed_very_steep_up
+        regime = "sehr steil bergauf"
 
-    v = 6.5  # m/s = 23.4 km/h
+    # FTP-Skalierung (leicht, da Zielwerte schon FTP-basiert sind)
+    ftp_factor_local = (ftp / 220) ** 0.15
+    v = base * ftp_factor_local
 
-    for _ in range(40):
-        F_roll = m * g * c_rr
-        F_grav = m * g * slope
-        F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
+    # Grenzen
+    if g < 0:
+        v = min(v, max_downhill_speed)
+    v = max(v, min_speed)
 
-        F_total = F_roll + F_aero + F_grav
-
-        v = max(0.1, v + 0.12 * (P - F_total * v) / (m * v))
-
-    return max(v * 3.6, min_speed_kmh), F_grav, F_roll, F_aero, regime
-
+    return v, regime
 
 
 # ---------------------------------------------------------
@@ -275,9 +301,6 @@ def compute_segment_speed(
 def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
     times = [0.0]  # Sekunden seit Start
     speeds_kmh = [0.0]
-    F_grav_list = [0.0]
-    F_roll_list = [0.0]
-    F_aero_list = [0.0]
     regime_list = ["start"]
 
     for i in range(1, len(df)):
@@ -287,28 +310,21 @@ def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
         if dist_m <= 0:
             times.append(times[-1])
             speeds_kmh.append(speeds_kmh[-1])
-            F_grav_list.append(F_grav_list[-1])
-            F_roll_list.append(F_roll_list[-1])
-            F_aero_list.append(F_aero_list[-1])
             regime_list.append(regime_list[-1])
             continue
 
-        v_kmh, Fg, Fr, Fa, regime = compute_segment_speed(
+        v_kmh, regime = compute_segment_speed_category(
             grad,
-            wind_speed,
-            wind_angle,
-            c_rr,
-            c_dA,
-            air_density,
-            weight_total,
-            power_flat,
-            power_climb,
-            power_light_downhill,
-            power_heavy_downhill,
+            ftp,
+            target_speed_flat,
+            target_speed_light_down,
+            target_speed_down,
+            target_speed_light_up,
+            target_speed_med_up,
+            target_speed_steep_up,
+            target_speed_very_steep_up,
             max_downhill_speed,
-            min_speed,
-            light_downhill_limit,
-            heavy_downhill_limit
+            min_speed
         )
 
         v_ms = max(0.1, v_kmh / 3.6)
@@ -316,17 +332,11 @@ def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
 
         times.append(times[-1] + dt)
         speeds_kmh.append(v_kmh)
-        F_grav_list.append(Fg)
-        F_roll_list.append(Fr)
-        F_aero_list.append(Fa)
         regime_list.append(regime)
 
     df["speed_kmh"] = speeds_kmh
     df["time_s"] = times
     df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
-    df["F_grav"] = F_grav_list
-    df["F_roll"] = F_roll_list
-    df["F_aero"] = F_aero_list
     df["regime"] = regime_list
 
     return df
@@ -662,11 +672,8 @@ if uploaded_files:
         st.subheader("📈 Geschwindigkeitskurve")
         show_speed_curve(df)
 
-        with st.expander("🔍 Debug‑Panel – Kräfte & Regime"):
-            st.markdown("**Kräfte (N) und Fahrregime (Auszug)**")
-            st.dataframe(
-                df[["km", "gradient", "speed_kmh", "F_grav", "F_roll", "F_aero", "regime"]].head(500)
-            )
+        with st.expander("🔍 Regime je Abschnitt"):
+            st.dataframe(df[["km", "gradient", "speed_kmh", "regime"]].head(500))
 
         st.subheader("📋 Kontroll‑ & Pausentabelle")
         summary_df = build_summary_table(
@@ -692,6 +699,7 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
