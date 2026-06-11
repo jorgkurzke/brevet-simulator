@@ -424,20 +424,38 @@ def show_map(df):
 # ---------------------------------------------------------
 # VISUALISIERUNG – HÖHENPROFIL
 # ---------------------------------------------------------
-def show_elevation(df):
-    if df.elevation.isna().all():
-        st.info("Keine Höhendaten.")
+def show_elevation_profile(df: pd.DataFrame):
+    if "elevation" not in df or df["elevation"].isna().all():
+        st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
     df_plot = df.copy()
-    df_plot["elevation_smooth"] = df_plot.elevation.rolling(25, center=True, min_periods=1).mean()
+    df_plot["elevation_smooth"] = df_plot["elevation"].rolling(window=25, center=True, min_periods=1).mean()
+    df_plot["gradient_smooth"] = df_plot["gradient"].rolling(window=25, center=True, min_periods=1).mean()
+
+    def gradient_color(g):
+        if g < 2:
+            return "green"
+        elif g < 5:
+            return "yellow"
+        elif g < 8:
+            return "orange"
+        else:
+            return "red"
+
+    df_plot["color"] = df_plot["gradient_smooth"].apply(gradient_color)
 
     chart = (
         alt.Chart(df_plot)
-        .mark_line(color="steelblue")
-        .encode(x="km", y="elevation_smooth")
+        .mark_bar()
+        .encode(
+            x=alt.X("km:Q", title="Distanz (km)"),
+            y=alt.Y("elevation_smooth:Q", title="Höhe (m)"),
+            color=alt.Color("color:N", scale=None, legend=None),
+        )
         .properties(height=250)
     )
+
     st.altair_chart(chart, use_container_width=True)
 
 
