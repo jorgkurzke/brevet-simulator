@@ -718,13 +718,13 @@ if uploaded_files:
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
 
-
 # ---------------------------------------------------------
-# RERUN-FLAG AUSWERTEN
+# RERUN-FLAG AUSWERTEN (MUSS GANZ UNTEN STEHEN)
 # ---------------------------------------------------------
 if st.session_state.get("trigger_rerun", False):
     st.session_state["trigger_rerun"] = False
     st.experimental_rerun()
+
 
 
 
