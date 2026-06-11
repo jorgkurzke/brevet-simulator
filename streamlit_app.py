@@ -289,17 +289,16 @@ def add_distance_and_gradient(df):
 # Wind Effekt
 # ---------------------------------------------------------
 
-def wind_effect(wind_speed_kmh, wind_angle_deg, gradient):
+def wind_effect(wind_speed_kmh, wind_angle_deg):
     # Windgeschwindigkeit in m/s
     w = wind_speed_kmh / 3.6
 
-    # Windwinkel relativ zur Fahrtrichtung (0° = Rückenwind, 180° = Gegenwind)
+    # 0° = Rückenwind, 180° = Gegenwind
     angle = math.radians(wind_angle_deg)
 
     # Effektive Windkomponente in Fahrtrichtung
-    w_eff = w * math.cos(angle)
+    return w * math.cos(angle)
 
-    return w_eff
 
 # ---------------------------------------------------------
 # SPEED MODEL (Version B.2)
@@ -307,6 +306,7 @@ def wind_effect(wind_speed_kmh, wind_angle_deg, gradient):
 def compute_speed(gradient):
     g = gradient
 
+    # 1. Basisgeschwindigkeit aus Steigung
     if g < -3:
         base = target_speed_down
     elif -3 <= g < -1:
@@ -322,11 +322,28 @@ def compute_speed(gradient):
     else:
         base = target_speed_very_steep_up
 
-    # FTP‑Skalierung
-    v = base * (ftp / 220) ** 0.15
+    # 2. FTP‑Skalierung
+    v0 = base * (ftp / 220) ** 0.15   # km/h
 
-    # Mindestgeschwindigkeit
-    return max(v, min_speed)
+    # 3. Windkomponente (m/s)
+    w_eff = wind_effect(wind_speed, wind_angle)
+
+    # 4. Geschwindigkeit in m/s
+    v_ms = v0 / 3.6
+
+    # 5. Aerodynamische Anpassung
+    # Gegenwind → langsamer, Rückenwind → schneller
+    v_ms = v_ms - w_eff
+
+    # 6. Mindestgeschwindigkeit
+    v_ms = max(v_ms, min_speed / 3.6)
+
+    # 7. Abfahrtslimit
+    if g < 0:
+        v_ms = min(v_ms, max_downhill_speed / 3.6)
+
+    return v_ms * 3.6
+
 
 
 
