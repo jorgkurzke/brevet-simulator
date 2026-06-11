@@ -55,16 +55,25 @@ power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=40
 power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
 
-c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
-air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
-wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
-wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
-c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
-
+# Rad-Daten
+st.sidebar.subheader("Rad Daten")
 weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", 50, 120, 75)
 weight_bike = st.sidebar.number_input("Radgewicht (kg)", 6, 20, 10)
 weight_total = weight_rider + weight_bike
 st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
+
+# Physikalisches Modell
+st.sidebar.subheader("Physikalisches Modell")
+c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
+c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
+
+# Wetter Modell
+st.sidebar.subheader("Wetter Modell")
+air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
+wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
+wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
+
+
 
 max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", 40, 120, 70)
 min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", 2, 15, 4)
