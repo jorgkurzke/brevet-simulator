@@ -91,16 +91,29 @@ target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%)", 5.0, 
 target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%)", 5.0, 35.0, round(base_speeds["med_up"] * ftp_factor, 1))
 target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%)", 3.0, 30.0, round(base_speeds["steep_up"] * ftp_factor, 1))
 target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%)", 2.0, 25.0, round(base_speeds["very_steep_up"] * ftp_factor, 1))
-
-
 # ---------------------------------------------------------
 # KONTROLLPUNKTE – VERZÖGERTER RERUN
 # ---------------------------------------------------------
 st.sidebar.header("📍 Kontrollpunkte")
 
-new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", 0.0, 2000.0, st.session_state["new_cp_km"])
-new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts", st.session_state["new_cp_name"])
-new_cp_pause = st.sidebar.number_input("Pause (Minuten)", 0, 240, st.session_state["new_cp_pause"])
+new_cp_km = st.sidebar.number_input(
+    "KM für neuen Kontrollpunkt",
+    min_value=0.0,
+    max_value=2000.0,
+    value=st.session_state["new_cp_km"],
+)
+
+new_cp_name = st.sidebar.text_input(
+    "Name des Kontrollpunkts",
+    value=st.session_state["new_cp_name"],
+)
+
+new_cp_pause = st.sidebar.number_input(
+    "Pause (Minuten)",
+    min_value=0,
+    max_value=240,
+    value=st.session_state["new_cp_pause"],
+)
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["pending_add_cp"] = {
@@ -116,8 +129,19 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
 # ---------------------------------------------------------
 st.sidebar.header("⏸ Pausenpunkte")
 
-new_pause_km = st.sidebar.number_input("KM für neue Pause", 0.0, 2000.0, st.session_state["new_pause_km"])
-new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", 0, 240, st.session_state["new_pause_min"])
+new_pause_km = st.sidebar.number_input(
+    "KM für neue Pause",
+    min_value=0.0,
+    max_value=2000.0,
+    value=st.session_state["new_pause_km"],
+)
+
+new_pause_min = st.sidebar.number_input(
+    "Pausendauer (Minuten)",
+    min_value=0,
+    max_value=240,
+    value=st.session_state["new_pause_min"],
+)
 
 if st.sidebar.button("Pause hinzufügen"):
     st.session_state["pending_add_pause"] = {
@@ -132,24 +156,31 @@ if st.sidebar.button("Pause hinzufügen"):
 # ---------------------------------------------------------
 if "pending_add_cp" in st.session_state:
     cp = st.session_state["pending_add_cp"]
+
     st.session_state["control_points"].append({
         "km": cp["km"],
         "name": cp["name"] or f"CP {len(st.session_state['control_points'])+1}",
         "pause_min": cp["pause"],
     })
+
     st.session_state["new_cp_km"] = 0.0
     st.session_state["new_cp_name"] = ""
     st.session_state["new_cp_pause"] = 0
+
     del st.session_state["pending_add_cp"]
+
 
 if "pending_add_pause" in st.session_state:
     p = st.session_state["pending_add_pause"]
+
     st.session_state["pauses"].append({
         "km": p["km"],
         "pause_min": p["pause"],
     })
+
     st.session_state["new_pause_km"] = 0.0
     st.session_state["new_pause_min"] = 0
+
     del st.session_state["pending_add_pause"]
 
 
@@ -222,13 +253,12 @@ def add_distance_and_gradient(df):
         df["gradient"] = 0.0
 
     return df
-
-
 # ---------------------------------------------------------
 # SPEED MODEL
 # ---------------------------------------------------------
 def compute_speed(gradient):
     g = gradient
+
     if g < -3:
         base = target_speed_down
     elif -3 <= g < -1:
@@ -244,9 +274,14 @@ def compute_speed(gradient):
     else:
         base = target_speed_very_steep_up
 
+    # FTP‑Skalierung
     v = base * (ftp / 220) ** 0.15
+
+    # Abfahrtslimit
     if g < 0:
         v = min(v, max_downhill_speed)
+
+    # Mindestgeschwindigkeit
     return max(v, min_speed)
 
 
@@ -286,6 +321,7 @@ def apply_pauses(df):
         km = df.km[i]
         base_time = df.sim_time[i]
 
+        # Kontrollpunkte
         for cp in st.session_state["control_points"]:
             if abs(km - cp["km"]) < 0.05:
                 key = ("cp", cp["km"])
@@ -293,6 +329,7 @@ def apply_pauses(df):
                     pause_events.add(key)
                     total_pause += cp["pause_min"] * 60
 
+        # Pausenpunkte
         for p in st.session_state["pauses"]:
             if abs(km - p["km"]) < 0.05:
                 key = ("pause", p["km"])
@@ -331,7 +368,12 @@ def show_map(df):
         data = []
         for p in points:
             nearest = df.iloc[(df.km - p["km"]).abs().argmin()]
-            data.append({"lon": nearest.lon, "lat": nearest.lat, "name": p.get("name", "Pause"), "pause_min": p["pause_min"]})
+            data.append({
+                "lon": nearest.lon,
+                "lat": nearest.lat,
+                "name": p.get("name", "Pause"),
+                "pause_min": p["pause_min"],
+            })
         return pdk.Layer(
             "ScatterplotLayer",
             data=data,
@@ -346,7 +388,11 @@ def show_map(df):
     st.pydeck_chart(
         pdk.Deck(
             layers=layers,
-            initial_view_state=pdk.ViewState(latitude=midpoint[0], longitude=midpoint[1], zoom=10),
+            initial_view_state=pdk.ViewState(
+                latitude=midpoint[0],
+                longitude=midpoint[1],
+                zoom=10
+            ),
             tooltip={"html": "<b>{name}</b><br/>Pause: {pause_min} min"},
         )
     )
@@ -420,12 +466,14 @@ def build_summary(df):
         last_elev = elev_total
 
     return pd.DataFrame(rows)
-
-
 # ---------------------------------------------------------
 # MAIN – GPX UPLOAD
 # ---------------------------------------------------------
-uploaded_files = st.file_uploader("GPX-Dateien hochladen", type=["gpx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader(
+    "GPX-Dateien hochladen",
+    type=["gpx"],
+    accept_multiple_files=True
+)
 
 if uploaded_files:
     all_dfs = {}
@@ -433,7 +481,146 @@ if uploaded_files:
     for file in uploaded_files:
         st.subheader(f"📍 {file.name}")
 
-        df = parse
+        # GPX einlesen
+        df = parse_gpx(file)
+        df = add_distance_and_gradient(df)
+        df = add_time_profile(df)
+        df = apply_pauses(df)
+
+        # -----------------------------
+        # DATENANZEIGE
+        # -----------------------------
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Rohdaten & Simulation (Auszug)**")
+            st.dataframe(
+                df[[
+                    "km",
+                    "elevation",
+                    "gradient",
+                    "speed_kmh",
+                    "sim_time",
+                    "sim_time_with_pauses"
+                ]].head(500)
+            )
+
+        with col2:
+            st.subheader("🗺️ Karte")
+            show_map(df)
+
+        # -----------------------------
+        # HÖHENPROFIL
+        # -----------------------------
+        st.subheader("⛰️ Höhenprofil")
+        show_elevation(df)
+
+        # -----------------------------
+        # GESCHWINDIGKEITSKURVE
+        # -----------------------------
+        st.subheader("📈 Geschwindigkeitskurve")
+        show_speed(df)
+
+        # -----------------------------
+        # REGIME-TABELLE
+        # -----------------------------
+        with st.expander("🔍 Regime je Abschnitt"):
+            st.dataframe(
+                df[["km", "gradient", "speed_kmh"]].head(500)
+            )
+
+        # -----------------------------
+        # ZUSAMMENFASSUNG
+        # -----------------------------
+        st.subheader("📋 Kontroll‑ & Pausentabelle")
+        summary_df = build_summary(df)
+        st.dataframe(summary_df)
+
+        # -----------------------------
+        # EXCEL EXPORT
+        # -----------------------------
+        summary_excel = BytesIO()
+        with pd.ExcelWriter(summary_excel, engine="xlsxwriter") as writer:
+            summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
+
+        st.download_button(
+            label="📥 Zusammenfassung als Excel",
+            data=summary_excel.getvalue(),
+            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # -----------------------------
+        # PDF EXPORT
+        # -----------------------------
+        pdf_buffer = BytesIO()
+        c = canvas.Canvas(pdf_buffer, pagesize=A4)
+        width, height = A4
+
+        text = c.beginText(40, height - 40)
+        text.setFont("Helvetica", 9)
+
+        text.textLine("Brevet Zusammenfassung")
+        text.textLine("")
+
+        for _, row in summary_df.iterrows():
+            line = ", ".join(f"{col}: {row[col]}" for col in summary_df.columns)
+            text.textLine(line)
+            text.textLine("")
+
+            if text.getY() < 60:
+                c.drawText(text)
+                c.showPage()
+                text = c.beginText(40, height - 40)
+                text.setFont("Helvetica", 9)
+
+        c.drawText(text)
+        c.showPage()
+        c.save()
+
+        st.download_button(
+            label="📄 Zusammenfassung als PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
+
+        # -----------------------------
+        # ANKUNFTSZEIT
+        # -----------------------------
+        finish_time = df.sim_time_with_pauses.iloc[-1]
+        total_time = finish_time - start_datetime
+
+        st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time}")
+        st.markdown(f"**Gesamtzeit:** {total_time}")
+
+        all_dfs[file.name] = df
+
+    # -----------------------------------------------------
+    # GESAMT-EXCEL EXPORT
+    # -----------------------------------------------------
+    excel_all = BytesIO()
+    with pd.ExcelWriter(excel_all, engine="xlsxwriter") as writer:
+        for name, df in all_dfs.items():
+            sheet = safe_sheet_name(name)
+            df.to_excel(writer, sheet_name=sheet, index=False)
+
+    st.download_button(
+        label="📥 Excel Export (alle Daten)",
+        data=excel_all.getvalue(),
+        file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+else:
+    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+# ---------------------------------------------------------
+# RERUN-FLAG AUSWERTEN (MUSS GANZ UNTEN STEHEN)
+# ---------------------------------------------------------
+if st.session_state.get("trigger_rerun", False):
+    st.session_state["trigger_rerun"] = False
+    st.experimental_rerun()
+
 
 
 
