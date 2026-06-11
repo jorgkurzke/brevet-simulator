@@ -116,7 +116,7 @@ c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
 st.sidebar.subheader("Wetter Modell")
 air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
 wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
-wind_angle = st.sidebar.slider("Windwinkel (°): 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
+wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
 
 
 # ---------------------------------------------------------
