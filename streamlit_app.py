@@ -323,25 +323,11 @@ def compute_speed(gradient):
         base = target_speed_very_steep_up
 
     # FTP‑Skalierung
-    v0 = base * (ftp / 220) ** 0.15
-
-    # Windkomponente (m/s)
-    w_eff = wind_effect(wind_speed, wind_angle, gradient)
-
-    # Geschwindigkeit in m/s
-    v_ms = v0 / 3.6
-
-    # Aerodynamische Anpassung
-    v_ms = max(v_ms - w_eff, min_speed / 3.6)
-
-    # Abfahrtslimit
-    if gradient < 0:
-        v_ms = min(v_ms, max_downhill_speed / 3.6)
-
-    #return v_ms * 3.6
+    v = base * (ftp / 220) ** 0.15
 
     # Mindestgeschwindigkeit
     return max(v, min_speed)
+
 
 
 # ---------------------------------------------------------
