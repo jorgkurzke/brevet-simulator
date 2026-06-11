@@ -619,7 +619,8 @@ else:
 # ---------------------------------------------------------
 if st.session_state.get("trigger_rerun", False):
     st.session_state["trigger_rerun"] = False
-    st.experimental_rerun()
+    st.session_state["__rerun_placeholder"] = datetime.now().timestamp()
+
 
 
 
