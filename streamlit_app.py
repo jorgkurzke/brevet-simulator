@@ -631,7 +631,7 @@ if uploaded_files:
         # -----------------------------
         # ZUSAMMENFASSUNG
         # -----------------------------
-       st.subheader("📋 Kontroll‑ & Pausentabelle")
+       st.subheader("Kontroll‑ & Pausentabelle")
        summary_df = build_summary_table(
            df,
            st.session_state["control_points"],
