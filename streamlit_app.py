@@ -10,9 +10,6 @@ import altair as alt
 import xml.etree.ElementTree as ET
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import locale
-locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
-
 
 
 # ---------------------------------------------------------
@@ -479,106 +476,60 @@ def show_speed(df):
 # ---------------------------------------------------------
 # SUMMARY TABLE
 # ---------------------------------------------------------
-def build_summary_table(df, control_points, pauses):
-    """
-    Baut eine Tabelle mit:
-    - Start
-    - Kontrollpunkten
-    - Pausenpunkten
-    - Endpunkt
-    """
+def build_summary(df):
+    def fmt_decimal(value, digits=1):
+        return f"{value:.{digits}f}".replace(".", ",")
 
-    # Liste aller relevanten Punkte
-    points = []
+    def fmt_km(value):
+        return f"{int(round(value))}"
 
-    # Startpunkt
-    points.append({
-        "km": 0.0,
-        "name": "Start",
-        "pause_min": 0
-    })
+    def fmt_hhmm(td):
+        total = int(td.total_seconds())
+        h = total // 3600
+        m = (total % 3600) // 60
+        return f"{h:02d}:{m:02d}"
 
-    # Kontrollpunkte
-    for cp in control_points:
-        points.append({
-            "km": float(cp["km"]),
-            "name": cp["name"],
-            "pause_min": cp.get("pause_min", 0)
-        })
+    def fmt_datetime(dt):
+        return dt.strftime("%d.%m.%Y %H:%M")
 
-    # Pausenpunkte
-    for p in pauses:
-        points.append({
-            "km": float(p["km"]),
-            "name": "Pause",
-            "pause_min": p.get("pause_min", 0)
-        })
+    points = [{"km": 0.0, "name": "Start", "pause_min": 0}]
+    points += st.session_state["control_points"]
+    points += [{"km": p["km"], "name": "Pause", "pause_min": p["pause_min"]} for p in st.session_state["pauses"]]
+    points.append({"km": df.km.iloc[-1], "name": "Ziel", "pause_min": 0})
 
-    # Endpunkt
-    points.append({
-        "km": float(df["km"].iloc[-1]),
-        "name": "Ziel",
-        "pause_min": 0
-    })
-
-    # Sortieren nach km
     points = sorted(points, key=lambda x: x["km"])
 
-    # Tabelle aufbauen
     rows = []
-    last_km = 0.0
-    last_time = df["sim_time_with_pauses"].iloc[0]
-    last_elev = df["elevation"].iloc[0] if "elevation" in df else 0
+    last_km = 0
+    last_time = df.sim_time_with_pauses.iloc[0]
+    last_elev = df.elevation.iloc[0]
 
     for p in points:
-        # Nächsten GPX‑Punkt finden
-        nearest = df.iloc[(df["km"] - p["km"]).abs().argmin()]
-
-        km_total = nearest["km"]
+        nearest = df.iloc[(df.km - p["km"]).abs().argmin()]
+        km_total = nearest.km
         km_diff = km_total - last_km
-
-        time_total = nearest["sim_time_with_pauses"]
+        time_total = nearest.sim_time_with_pauses
         time_diff = time_total - last_time
-
-        elev_total = nearest["elevation"] if "elevation" in df else 0
+        elev_total = nearest.elevation
         elev_diff = elev_total - last_elev
-
-        # Durchschnittsgeschwindigkeiten
-        hours_total = (time_total - df["sim_time_with_pauses"].iloc[0]).total_seconds() / 3600
-        hours_diff = time_diff.total_seconds() / 3600
-
-        avg_speed_total = km_total / hours_total if hours_total > 0 else 0
-        avg_speed_diff = km_diff / hours_diff if hours_diff > 0 else 0
 
         rows.append({
             "Name": p["name"],
-            "KM gesamt": round(km_total, 2),
-            "KM Abschnitt": round(km_diff, 2),
-            "HM gesamt": round(elev_total, 0),
-            "HM Abschnitt": round(elev_diff, 0),
-            "Zeit gesamt": time_total.strftime("%H:%M:%S"),
-            "Zeit Abschnitt": str(time_diff),
-            "Ø‑km/h gesamt": round(avg_speed_total, 1),
-            "Ø‑km/h Abschnitt": round(avg_speed_diff, 1),
-            "Pause (min)": p["pause_min"]
+            "KM gesamt": fmt_km(km_total),
+            "KM Abschnitt": fmt_km(km_diff),
+            "HM gesamt": int(round(elev_total)),
+            "HM Abschnitt": int(round(elev_diff)),
+            "Zeit gesamt": fmt_hhmm(time_total - df.sim_time_with_pauses.iloc[0]),
+            "Zeit Abschnitt": fmt_hhmm(time_diff),
+            "Pause (min)": p["pause_min"],
         })
 
         last_km = km_total
         last_time = time_total
         last_elev = elev_total
 
-        return pd.DataFrame(rows)[[
-        "Name",
-        "KM gesamt",
-        "KM Abschnitt",
-        "HM gesamt",
-        "HM Abschnitt",
-        "Zeit gesamt",
-        "Zeit Abschnitt",
-        "Ø‑km/h gesamt",
-        "Ø‑km/h Abschnitt",  
-        "Pause (min)"
-    ]]
+    return pd.DataFrame(rows)
+
 
 # ---------------------------------------------------------
 # MAIN – GPX UPLOAD
