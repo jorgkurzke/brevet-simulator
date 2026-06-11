@@ -398,21 +398,52 @@ def show_map(df):
     )
 
 
-def show_elevation(df):
-    if df.elevation.isna().all():
-        st.info("Keine Höhendaten.")
+def show_elevation_profile(df: pd.DataFrame):
+    if "elevation" not in df or df["elevation"].isna().all():
+        st.info("Keine Höhendaten in dieser GPX-Datei.")
         return
 
-    df_plot = df.copy()
-    df_plot["elevation_smooth"] = df_plot.elevation.rolling(25, center=True, min_periods=1).mean()
+    # Steigung berechnen
+    df["delta_h"] = df["elevation"].diff()
+    df["delta_m"] = df["distance_m"].diff()
+    df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
+    df["gradient"] = df["gradient"].fillna(0)
 
+    # Glätten
+    df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
+
+    # Farben
+    def gradient_color(g):
+        if g < 2:
+            return "green"
+        elif g < 5:
+            return "yellow"
+        elif g < 8:
+            return "orange"
+        else:
+            return "red"
+
+    df["color"] = df["gradient_smooth"].apply(gradient_color)
+
+    # Balken-Höhenprofil
     chart = (
-        alt.Chart(df_plot)
-        .mark_line(color="steelblue")
-        .encode(x="km", y="elevation_smooth")
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("km:Q", title="Distanz (km)"),
+            y=alt.Y("elevation:Q", title="Höhe (m)"),
+            color=alt.Color("color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("km:Q", title="km"),
+                alt.Tooltip("elevation:Q", title="Höhe (m)"),
+                alt.Tooltip("gradient_smooth:Q", title="Steigung (%)")
+            ]
+        )
         .properties(height=250)
     )
+
     st.altair_chart(chart, use_container_width=True)
+
 
 
 def show_speed(df):
