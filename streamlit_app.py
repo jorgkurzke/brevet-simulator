@@ -82,7 +82,6 @@ target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%) (km/h)",
 target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%) (km/h)", 3.0, 30.0, round(base_steep_up * ftp_factor, 1))
 target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%) (km/h)", 2.0, 25.0, round(base_very_steep_up * ftp_factor, 1))
 
-
 st.sidebar.subheader("📊 Zielgeschwindigkeiten Übersicht")
 target_df = pd.DataFrame([
     {"Kategorie": "Stark bergab (< -3%)", "v_kmh": target_speed_down},
@@ -103,7 +102,7 @@ st.sidebar.altair_chart(
 
 
 # ---------------------------------------------------------
-# KONTROLLPUNKTE – MIT RESET FIX
+# KONTROLLPUNKTE – MIT RERUN-FIX
 # ---------------------------------------------------------
 st.sidebar.header("📍 Kontrollpunkte")
 
@@ -118,22 +117,9 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-new_cp_km = st.sidebar.number_input(
-    "KM für neuen Kontrollpunkt",
-    min_value=0.0,
-    step=1.0,
-    value=st.session_state["new_cp_km"]
-)
-new_cp_name = st.sidebar.text_input(
-    "Name des Kontrollpunkts",
-    value=st.session_state["new_cp_name"]
-)
-new_cp_pause = st.sidebar.number_input(
-    "Pause an Kontrollpunkt (Minuten)",
-    min_value=0,
-    max_value=240,
-    value=st.session_state["new_cp_pause"]
-)
+new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0, value=st.session_state["new_cp_km"])
+new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts", value=st.session_state["new_cp_name"])
+new_cp_pause = st.sidebar.number_input("Pause an Kontrollpunkt (Minuten)", min_value=0, max_value=240, value=st.session_state["new_cp_pause"])
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["control_points"].append({
@@ -144,14 +130,14 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["new_cp_km"] = 0.0
     st.session_state["new_cp_name"] = ""
     st.session_state["new_cp_pause"] = 0
-    st.experimental_rerun()
+    st.session_state["trigger_rerun"] = True
 
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
 
 
 # ---------------------------------------------------------
-# PAUSENPUNKTE – MIT RESET FIX
+# PAUSENPUNKTE – MIT RERUN-FIX
 # ---------------------------------------------------------
 st.sidebar.header("⏸ Pausenpunkte")
 
@@ -165,18 +151,8 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-new_pause_km = st.sidebar.number_input(
-    "KM für neue Pause",
-    min_value=0.0,
-    step=1.0,
-    value=st.session_state["new_pause_km"]
-)
-new_pause_min = st.sidebar.number_input(
-    "Pausendauer (Minuten)",
-    min_value=0,
-    max_value=240,
-    value=st.session_state["new_pause_min"]
-)
+new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0, value=st.session_state["new_pause_km"])
+new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", min_value=0, max_value=240, value=st.session_state["new_pause_min"])
 
 if st.sidebar.button("Pause hinzufügen"):
     st.session_state["pauses"].append({
@@ -185,7 +161,7 @@ if st.sidebar.button("Pause hinzufügen"):
     })
     st.session_state["new_pause_km"] = 0.0
     st.session_state["new_pause_min"] = 0
-    st.experimental_rerun()
+    st.session_state["trigger_rerun"] = True
 
 for p in st.session_state["pauses"]:
     st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
@@ -741,6 +717,15 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
+
+# ---------------------------------------------------------
+# RERUN-FLAG AUSWERTEN
+# ---------------------------------------------------------
+if st.session_state.get("trigger_rerun", False):
+    st.session_state["trigger_rerun"] = False
+    st.experimental_rerun()
+
 
 
 
