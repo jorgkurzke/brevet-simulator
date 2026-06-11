@@ -212,9 +212,7 @@ def compute_segment_speed(
     slope = gradient / 100.0
     theta = math.atan(abs(slope))
 
-    # ---------------------------------------------------------
-    # 1) STARKES GEFÄLLE → Fahrer rollt (keine Leistung)
-    # ---------------------------------------------------------
+    # 1) Starkes Gefälle – rollen
     if gradient <= heavy_downhill_limit:
         regime = "heavy_downhill"
         v = 10.0  # m/s Startwert
@@ -230,9 +228,7 @@ def compute_segment_speed(
         v_kmh = min(v * 3.6, max_downhill_speed_kmh)
         return v_kmh, F_grav, F_roll, F_aero, regime
 
-    # ---------------------------------------------------------
-    # 2) LEICHTES GEFÄLLE → Fahrer tritt weiter (realistisch)
-    # ---------------------------------------------------------
+    # 2) Leichtes Gefälle – weiter treten
     if light_downhill_limit < gradient < 0:
         regime = "light_downhill"
         P = power_light_downhill
@@ -259,9 +255,7 @@ def compute_segment_speed(
         v_kmh = min(v, max_downhill_speed_kmh)
         return v_kmh, F_grav, F_roll, F_aero, regime
 
-    # ---------------------------------------------------------
-    # 3) FLACH / BERGAUF → Leistungsmodell
-    # ---------------------------------------------------------
+    # 3) Flach / bergauf – Leistungsmodell
     if gradient > 1.0:
         regime = "climb"
         P = power_climb
@@ -290,6 +284,68 @@ def compute_segment_speed(
     v_kmh = max(v * 3.6, min_speed_kmh)
     return v_kmh, F_grav, F_roll, F_aero, regime
 
+
+# ---------------------------------------------------------
+# TIME PROFILE (Simulation)
+# ---------------------------------------------------------
+def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
+    times = [0.0]  # Sekunden seit Start
+    speeds_kmh = [0.0]
+    F_grav_list = [0.0]
+    F_roll_list = [0.0]
+    F_aero_list = [0.0]
+    regime_list = ["start"]
+
+    for i in range(1, len(df)):
+        grad = df.iloc[i]["gradient"]
+        dist_m = df.iloc[i]["distance_m"] - df.iloc[i-1]["distance_m"]
+
+        if dist_m <= 0:
+            times.append(times[-1])
+            speeds_kmh.append(speeds_kmh[-1])
+            F_grav_list.append(F_grav_list[-1])
+            F_roll_list.append(F_roll_list[-1])
+            F_aero_list.append(F_aero_list[-1])
+            regime_list.append(regime_list[-1])
+            continue
+
+        v_kmh, Fg, Fr, Fa, regime = compute_segment_speed(
+            grad,
+            wind_speed,
+            wind_angle,
+            c_rr,
+            c_dA,
+            air_density,
+            weight_total,
+            power_flat,
+            power_climb,
+            power_light_downhill,
+            power_heavy_downhill,
+            max_downhill_speed,
+            min_speed,
+            light_downhill_limit,
+            heavy_downhill_limit
+        )
+
+        v_ms = max(0.1, v_kmh / 3.6)
+        dt = dist_m / v_ms
+
+        times.append(times[-1] + dt)
+        speeds_kmh.append(v_kmh)
+        F_grav_list.append(Fg)
+        F_roll_list.append(Fr)
+        F_aero_list.append(Fa)
+        regime_list.append(regime)
+
+    df["speed_kmh"] = speeds_kmh
+    df["time_s"] = times
+    df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
+    df["F_grav"] = F_grav_list
+    df["F_roll"] = F_roll_list
+    df["F_aero"] = F_aero_list
+    df["regime"] = regime_list
+
+    return df
 
 
 # ---------------------------------------------------------
@@ -652,6 +708,7 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
