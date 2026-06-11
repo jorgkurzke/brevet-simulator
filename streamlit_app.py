@@ -290,6 +290,7 @@ def add_distance_and_gradient(df):
 # SPEED MODEL (Version B.2)
 # ---------------------------------------------------------
 def compute_speed(gradient):
+    # Basisgeschwindigkeit aus Steigung
     g = gradient
 
     if g < -3:
@@ -308,11 +309,24 @@ def compute_speed(gradient):
         base = target_speed_very_steep_up
 
     # FTP‑Skalierung
-    v = base * (ftp / 220) ** 0.15
+    v0 = base * (ftp / 220) ** 0.15
+
+    # Windkomponente (m/s)
+    w_eff = wind_effect(wind_speed, wind_angle, gradient)
+
+    # Geschwindigkeit in m/s
+    v_ms = v0 / 3.6
+
+    # Aerodynamische Anpassung
+    # Wenn Gegenwind → effektive Geschwindigkeit sinkt
+    # Wenn Rückenwind → effektive Geschwindigkeit steigt
+    v_ms = max(v_ms - w_eff, min_speed / 3.6)
 
     # Abfahrtslimit
-    if g < 0:
-        v = min(v, max_downhill_speed)
+    if gradient < 0:
+        v_ms = min(v_ms, max_downhill_speed / 3.6)
+
+   # return v_ms * 3.6
 
     # Mindestgeschwindigkeit
     return max(v, min_speed)
