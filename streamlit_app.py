@@ -8,6 +8,8 @@ import xlsxwriter
 import pydeck as pdk
 import altair as alt
 import xml.etree.ElementTree as ET
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 
 # ---------------------------------------------------------
@@ -134,9 +136,9 @@ st.sidebar.header("📍 Kontrollpunkte")
 if "control_points" not in st.session_state:
     st.session_state["control_points"] = []
 
-new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0)
-new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts")
-new_cp_pause = st.sidebar.number_input("Pause an Kontrollpunkt (Minuten)", min_value=0, max_value=240, value=0)
+new_cp_km = st.sidebar.number_input("KM für neuen Kontrollpunkt", min_value=0.0, step=1.0, key="new_cp_km")
+new_cp_name = st.sidebar.text_input("Name des Kontrollpunkts", key="new_cp_name")
+new_cp_pause = st.sidebar.number_input("Pause an Kontrollpunkt (Minuten)", min_value=0, max_value=240, value=0, key="new_cp_pause")
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     st.session_state["control_points"].append({
@@ -144,6 +146,9 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
         "name": new_cp_name if new_cp_name else f"CP {len(st.session_state['control_points'])+1}",
         "pause_min": new_cp_pause
     })
+    st.session_state["new_cp_km"] = 0.0
+    st.session_state["new_cp_name"] = ""
+    st.session_state["new_cp_pause"] = 0
 
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
@@ -157,14 +162,16 @@ st.sidebar.header("⏸ Pausenpunkte")
 if "pauses" not in st.session_state:
     st.session_state["pauses"] = []
 
-new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0)
-new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", min_value=0, max_value=240, value=0)
+new_pause_km = st.sidebar.number_input("KM für neue Pause", min_value=0.0, step=1.0, key="new_pause_km")
+new_pause_min = st.sidebar.number_input("Pausendauer (Minuten)", min_value=0, max_value=240, value=0, key="new_pause_min")
 
 if st.sidebar.button("Pause hinzufügen"):
     st.session_state["pauses"].append({
         "km": new_pause_km,
         "pause_min": new_pause_min
     })
+    st.session_state["new_pause_km"] = 0.0
+    st.session_state["new_pause_min"] = 0
 
 for p in st.session_state["pauses"]:
     st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
@@ -590,8 +597,8 @@ def build_summary_table(df, control_points, pauses):
 
     points.append({
         "km": float(df["km"].iloc[-1]),
-            "name": "Ziel",
-            "pause_min": 0
+        "name": "Ziel",
+        "pause_min": 0
     })
 
     points = sorted(points, key=lambda x: x["km"])
@@ -691,6 +698,51 @@ if uploaded_files:
         )
         st.dataframe(summary_df)
 
+        # Zusammenfassung als Excel exportieren
+        summary_excel = BytesIO()
+        with pd.ExcelWriter(summary_excel, engine="xlsxwriter") as writer:
+            summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
+
+        st.download_button(
+            label="📥 Zusammenfassung als Excel",
+            data=summary_excel.getvalue(),
+            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Zusammenfassung als PDF exportieren
+        pdf_buffer = BytesIO()
+        c = canvas.Canvas(pdf_buffer, pagesize=A4)
+        width, height = A4
+
+        text = c.beginText(40, height - 40)
+        text.setFont("Helvetica", 9)
+
+        header = "Brevet Zusammenfassung"
+        text.textLine(header)
+        text.textLine("")
+
+        for i, row in summary_df.iterrows():
+            line = ", ".join(f"{col}: {row[col]}" for col in summary_df.columns)
+            text.textLine(line)
+            text.textLine("")
+            if text.getY() < 60:
+                c.drawText(text)
+                c.showPage()
+                text = c.beginText(40, height - 40)
+                text.setFont("Helvetica", 9)
+
+        c.drawText(text)
+        c.showPage()
+        c.save()
+
+        st.download_button(
+            label="📄 Zusammenfassung als PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
+
         finish_time = df.iloc[-1]["sim_time_with_pauses"]
         total_time = finish_time - start_datetime
         st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time}")
@@ -700,13 +752,14 @@ if uploaded_files:
 
     excel_bytes = export_to_excel(all_dfs)
     st.download_button(
-        label="📥 Excel Export",
+        label="📥 Excel Export (alle Daten)",
         data=excel_bytes,
         file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
