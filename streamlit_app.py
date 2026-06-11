@@ -64,31 +64,6 @@ power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=4
 max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", 40, 120, 70)
 min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", 2, 15, 4)
 
-
-# Rad-Daten
-st.sidebar.subheader("Rad Daten")
-weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", 50, 120, 75)
-weight_bike = st.sidebar.number_input("Radgewicht (kg)", 6, 20, 10)
-weight_total = weight_rider + weight_bike
-st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
-
-# Physikalisches Modell
-st.sidebar.subheader("Physikalisches Modell")
-c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
-c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
-
-# Wetter Modell
-st.sidebar.subheader("Wetter Modell")
-air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
-wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
-wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
-
-
-
-
-
-
-
 # ---------------------------------------------------------
 # ZIELGESCHWINDIGKEITEN
 # ---------------------------------------------------------
@@ -113,6 +88,26 @@ target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%)", 5.0, 
 target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%)", 5.0, 35.0, round(base_speeds["med_up"] * ftp_factor, 1))
 target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%)", 3.0, 30.0, round(base_speeds["steep_up"] * ftp_factor, 1))
 target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%)", 2.0, 25.0, round(base_speeds["very_steep_up"] * ftp_factor, 1))
+
+# Rad-Daten
+st.sidebar.subheader("Rad Daten")
+weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", 50, 120, 75)
+weight_bike = st.sidebar.number_input("Radgewicht (kg)", 6, 20, 10)
+weight_total = weight_rider + weight_bike
+st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
+
+# Physikalisches Modell
+st.sidebar.subheader("Physikalisches Modell")
+c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
+c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
+
+# Wetter Modell
+st.sidebar.subheader("Wetter Modell")
+air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
+wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
+wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
+
+
 # ---------------------------------------------------------
 # KONTROLLPUNKTE – VERZÖGERTER RERUN
 # ---------------------------------------------------------
@@ -149,21 +144,21 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
 # ---------------------------------------------------------
 # PAUSEN – VERZÖGERTER RERUN
 # ---------------------------------------------------------
-st.sidebar.header("⏸ Pausenpunkte")
+#st.sidebar.header("⏸ Pausenpunkte")
 
-new_pause_km = st.sidebar.number_input(
-    "KM für neue Pause",
-    min_value=0.0,
-    max_value=2000.0,
-    value=st.session_state["new_pause_km"],
-)
+#new_pause_km = st.sidebar.number_input(
+#    "KM für neue Pause",
+#    min_value=0.0,
+#    max_value=2000.0,
+#    value=st.session_state["new_pause_km"],
+#)
 
-new_pause_min = st.sidebar.number_input(
-    "Pausendauer (Minuten)",
-    min_value=0,
-    max_value=240,
-    value=st.session_state["new_pause_min"],
-)
+#new_pause_min = st.sidebar.number_input(
+#    "Pausendauer (Minuten)",
+#    min_value=0,
+#    max_value=240,
+#    value=st.session_state["new_pause_min"],
+#)
 
 if st.sidebar.button("Pause hinzufügen"):
     st.session_state["pending_add_pause"] = {
