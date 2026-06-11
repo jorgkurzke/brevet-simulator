@@ -227,21 +227,39 @@ def compute_segment_speed(
         return v_kmh, F_grav, F_roll, F_aero, regime
 
     # leichtes Gefälle – weiter treten
-    if light_downhill_limit < gradient < 0:
-        regime = "light_downhill"
-        P = power_light_downhill
-        v = 5.0
-        for _ in range(40):
-            F_roll = m * g * c_rr
-            F_grav = -m * g * math.sin(theta)
-            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
-            F_total = F_roll + F_aero - F_grav
-            if F_total <= 0:
-                v = 0.1
-                break
-            v = max(0.1, P / F_total)
-        v_kmh = min(v * 3.6, max_downhill_speed_kmh)
-        return v_kmh, F_grav, F_roll, F_aero, regime
+    # ---------------------------------------------------------
+# 2) LEICHTES GEFÄLLE → Fahrer tritt weiter (realistisch)
+# ---------------------------------------------------------
+if light_downhill_limit < gradient < 0:
+    regime = "light_downhill"
+    P = power_light_downhill
+
+    # Startwert: flache Geschwindigkeit + Bonus
+    v = (power_flat / (m * g * c_rr)) ** 0.5 * 3.6
+    v = max(v, 10)  # mindestens 10 km/h
+
+    for _ in range(40):
+        v_ms = v / 3.6
+
+        # Kräfte
+        F_roll = m * g * c_rr
+        F_grav = m * g * abs(math.sin(theta))  # unterstützt
+        F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
+
+        # Netto-Widerstand
+        F_total = F_roll + F_aero - F_grav
+
+        # Neue Geschwindigkeit aus Leistungsbilanz
+        if F_total <= 0:
+            v_ms = v_ms + 0.2  # leicht beschleunigen
+        else:
+            v_ms = P / F_total
+
+        v = max(5, v_ms * 3.6)
+
+    v_kmh = min(v, max_downhill_speed_kmh)
+    return v_kmh, F_grav, F_roll, F_aero, regime
+
 
     # flach / bergauf – Leistungsmodell
     if gradient > 1.0:
