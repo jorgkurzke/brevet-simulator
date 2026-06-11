@@ -520,6 +520,7 @@ def build_summary(df):
             "KM Abschnitt": fmt_km(km_diff),
             "HM gesamt": int(round(elev_total)),
             "HM Abschnitt": int(round(elev_diff)),
+            "Ankunftszeit": time_total.strftime("%d.%m.%Y %H:%M"),
             "Zeit gesamt": fmt_hhmm(time_total - start_time),
             "Zeit Abschnitt": fmt_hhmm(time_diff),
             "Ø‑km/h gesamt": fmt_speed(km_total, time_total - start_time),
@@ -551,9 +552,9 @@ def export_summary_pdf(summary_df):
     width, height = A4
 
     # Layout
-    x_positions = [20, 80, 130, 170, 210, 250, 300, 350, 400, 450]
+    x_positions = [20, 70, 120, 160, 200, 240, 280, 320, 360, 400, 450]
     headers = [
-        "Name", "KM ges.", "KM Abs.", "HM ges.", "HM Abs.",
+        "Name", "KM ges.", "KM Abs.", "HM ges.", "HM Abs.", "Ankunftszeit",
         "Zeit ges.", "Zeit Abs.", "Ø km/h g.", "Ø km/h A.", "Pause"
     ]
 
@@ -581,6 +582,7 @@ def export_summary_pdf(summary_df):
             row["KM Abschnitt"],
             row["HM gesamt"],
             row["HM Abschnitt"],
+            row["Ankunftszeit"],
             row["Zeit gesamt"],
             row["Zeit Abschnitt"],
             row["Ø‑km/h gesamt"],
