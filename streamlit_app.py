@@ -242,7 +242,7 @@ def parse_gpx(file) -> pd.DataFrame:
         data.append({
             "lat": lat,
             "lon": lon,
-            "elevation": float(ele.text) if ele is not None else None,
+            "elevation": float(ele.text) if ele is not None else 0.0,
             "time": time.text if time is not None else None,
         })
 
@@ -530,8 +530,8 @@ def build_summary(df):
             "Name": p["name"],
             "KM gesamt": fmt_km(km_total),
             "KM Abschnitt": fmt_km(km_diff),
-            "HM gesamt": int(round(elev_total)),
-            "HM Abschnitt": int(round(elev_diff)),
+            "HM gesamt": int(round(elev_total)) if pd.notna(elev_total) else 0,
+            "HM Abschnitt": int(round(elev_diff)) if pd.notna(elev_diff) else 0,
             "Ankunftszeit": time_total.strftime("%d.%m.%Y %H:%M"),
             "Zeit gesamt": fmt_hhmm(time_total - start_time),
             "Zeit Abschnitt": fmt_hhmm(time_diff),
