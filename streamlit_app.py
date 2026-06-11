@@ -1,6 +1,3 @@
-# ---------------------------------------------------------
-# IMPORTS
-# ---------------------------------------------------------
 import math
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -31,29 +28,35 @@ st.title("Brevet GPX Analyzer & Simulator")
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
+st.sidebar.subheader("Leistung")
 ftp = st.sidebar.number_input("FTP (Watt)", min_value=100, max_value=400, value=220, step=5)
-
-st.sidebar.subheader("Leistungsprofile")
 power_flat = st.sidebar.number_input("Leistung flach (W)", min_value=80, max_value=400, value=180)
 power_climb = st.sidebar.number_input("Leistung bergauf (W)", min_value=80, max_value=400, value=220)
+power_light_downhill = st.sidebar.number_input("Leistung leicht bergab (W)", min_value=0, max_value=250, value=80)
+power_heavy_downhill = st.sidebar.number_input("Leistung stark bergab (W)", min_value=0, max_value=200, value=0)
 
-st.sidebar.subheader("Physikalisches Modell")
-c_rr = st.sidebar.number_input("Rollwiderstand Crr", min_value=0.002, max_value=0.01, value=0.004, step=0.001)
-c_dA = st.sidebar.number_input("Luftwiderstand CdA", min_value=0.15, max_value=0.40, value=0.28, step=0.01)
-weight = st.sidebar.number_input("Systemgewicht (kg)", min_value=60, max_value=120, value=85)
+st.sidebar.subheader("Aerodynamik")
+c_dA = st.sidebar.number_input("CdA (m²)", min_value=0.15, max_value=0.40, value=0.28, step=0.01)
+air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", min_value=1.0, max_value=1.4, value=1.225, step=0.01)
+wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", min_value=0, max_value=80, value=10)
+wind_angle = st.sidebar.slider("Windwinkel (°) – 0° Rückenwind, 180° Gegenwind", 0, 360, 180)
 
-st.sidebar.subheader("Windmodell")
-wind_speed = st.sidebar.number_input("Windstärke (km/h)", min_value=0, max_value=80, value=10)
-wind_dir = st.sidebar.slider("Windrichtung (°)", min_value=0, max_value=360, value=180)
+st.sidebar.subheader("Rollwiderstand")
+c_rr = st.sidebar.number_input("Crr", min_value=0.002, max_value=0.01, value=0.004, step=0.001)
 
-st.sidebar.subheader("Maximale Abfahrtsgeschwindigkeit")
-max_downhill_speed = st.sidebar.number_input(
-    "Max-Speed bergab (km/h)",
-    min_value=40,
-    max_value=120,
-    value=70,
-    step=1
-)
+st.sidebar.subheader("Masse")
+weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", min_value=50, max_value=120, value=75)
+weight_bike = st.sidebar.number_input("Radgewicht (kg)", min_value=6, max_value=20, value=10)
+weight_total = weight_rider + weight_bike
+st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
+
+st.sidebar.subheader("Geschwindigkeitsgrenzen")
+max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", min_value=40, max_value=120, value=70)
+min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", min_value=2, max_value=15, value=4)
+
+st.sidebar.subheader("Gefälle‑Schwellen")
+light_downhill_limit = st.sidebar.number_input("Leichtes Gefälle bis (%)", min_value=-10.0, max_value=0.0, value=-3.0)
+heavy_downhill_limit = st.sidebar.number_input("Starkes Gefälle ab (%)", min_value=-20.0, max_value=-3.0, value=-6.0)
 
 st.sidebar.header("⏱ ACP‑Start")
 start_date = st.sidebar.date_input("Startdatum", datetime.now().date())
@@ -169,8 +172,8 @@ def add_distance_and_gradient(df: pd.DataFrame) -> pd.DataFrame:
     if "elevation" in df and not df["elevation"].isna().all():
         df["delta_h"] = df["elevation"].diff()
         df["delta_m"] = df["distance_m"].diff().replace(0, 0.1)
-        df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
-        df["gradient"] = df["gradient"].clip(-20, 20)
+        df["gradient_raw"] = (df["delta_h"] / df["delta_m"]) * 100
+        df["gradient"] = df["gradient_raw"].clip(-20, 20).rolling(window=5, center=True, min_periods=1).mean()
     else:
         df["gradient"] = 0.0
 
@@ -178,85 +181,106 @@ def add_distance_and_gradient(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------
-# PHYSICS – SPEED MODEL
+# PHYSICS – REALISTIC SPEED MODEL WITH FORCES
 # ---------------------------------------------------------
 def compute_segment_speed(
     gradient,
     wind_speed_kmh,
+    wind_angle_deg,
     c_rr,
     c_dA,
-    weight_kg,
+    air_density,
+    weight_total,
     power_flat,
     power_climb,
-    max_downhill_speed_kmh
+    power_light_downhill,
+    power_heavy_downhill,
+    max_downhill_speed_kmh,
+    min_speed_kmh,
+    light_downhill_limit,
+    heavy_downhill_limit
 ):
     g = 9.81
-    rho = 1.225
-    m = weight_kg
+    m = weight_total
+    rho = air_density
+
+    # Wind in m/s
     wind_ms = wind_speed_kmh / 3.6
+    # 0° = Rückenwind, 180° = Gegenwind
+    wind_factor = math.cos(math.radians(wind_angle_deg))
+    effective_wind = wind_ms * wind_factor
 
     slope = gradient / 100.0
     theta = math.atan(abs(slope))
 
+    regime = "flat"
+
     # ---------------------------------------------------------
-    # 1) STARKES GEFÄLLE → Fahrer rollt (Option D)
+    # 1) STARKES GEFÄLLE → Fahrer rollt (keine Leistung)
     # ---------------------------------------------------------
-    if gradient <= -3.0:
-        v = 10.0
-        for _ in range(30):
+    if gradient <= heavy_downhill_limit:
+        regime = "heavy_downhill"
+        v = 10.0  # m/s Startwert
+        for _ in range(40):
             F_grav = m * g * math.sin(theta)          # treibend
             F_roll = m * g * c_rr * math.cos(theta)   # bremsend
-            F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
+            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
             net = F_grav - F_roll - F_aero
             v = max(0.1, v + 0.3 * net)
-        return min(v * 3.6, max_downhill_speed_kmh)
+        v_kmh = min(v * 3.6, max_downhill_speed_kmh)
+        return v_kmh, F_grav, F_roll, F_aero, regime
 
     # ---------------------------------------------------------
     # 2) LEICHTES GEFÄLLE → Fahrer tritt weiter
     # ---------------------------------------------------------
-    if -3.0 < gradient < 0.0:
-        P = power_flat
-        grav_bonus = abs(gradient) * 0.5  # km/h Bonus pro %-Gefälle
-
-        # Leistungsmodell
+    if light_downhill_limit < gradient < 0:
+        regime = "light_downhill"
+        P = power_light_downhill
         v = 5.0
-        for _ in range(30):
+        for _ in range(40):
             F_roll = m * g * c_rr
             F_grav = -m * g * math.sin(theta)  # unterstützt
-            F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
+            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
             F_total = F_roll + F_aero - F_grav
+            if F_total <= 0:
+                v = 0.1
+                break
             v = max(0.1, P / F_total)
-
-        v_kmh = v * 3.6 + grav_bonus
-        return min(v_kmh, max_downhill_speed_kmh)
+        v_kmh = min(v * 3.6, max_downhill_speed_kmh)
+        return v_kmh, F_grav, F_roll, F_aero, regime
 
     # ---------------------------------------------------------
     # 3) FLACH / BERGAUF → normales Leistungsmodell
     # ---------------------------------------------------------
     if gradient > 1.0:
+        regime = "climb"
         P = power_climb
     else:
+        regime = "flat"
         P = power_flat
 
-    v = 5.0
-    for _ in range(30):
+    v = 4.0
+    for _ in range(40):
         F_roll = m * g * c_rr
         F_grav = m * g * math.sin(theta)  # bremst
-        F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
+        F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
         F_total = F_roll + F_grav + F_aero
+        if F_total <= 0:
+            v = 0.1
+            break
         v = max(0.1, P / F_total)
 
-    return v * 3.6
+    v_kmh = max(v * 3.6, min_speed_kmh)
+    return v_kmh, F_grav, F_roll, F_aero, regime
 
 
-
-
-def add_time_profile(df: pd.DataFrame,
-                     c_rr, c_dA, weight,
-                     power_flat, power_climb,
-                     wind_speed, max_downhill_speed):
+def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
     times = [0.0]  # seconds from start
     speeds_kmh = [0.0]
+    F_grav_list = [0.0]
+    F_roll_list = [0.0]
+    F_aero_list = [0.0]
+    regime_list = ["start"]
 
     for i in range(1, len(df)):
         grad = df.iloc[i]["gradient"]
@@ -264,26 +288,46 @@ def add_time_profile(df: pd.DataFrame,
         if dist_m <= 0:
             times.append(times[-1])
             speeds_kmh.append(speeds_kmh[-1])
+            F_grav_list.append(F_grav_list[-1])
+            F_roll_list.append(F_roll_list[-1])
+            F_aero_list.append(F_aero_list[-1])
+            regime_list.append(regime_list[-1])
             continue
 
-        v_kmh = compute_segment_speed(
+        v_kmh, Fg, Fr, Fa, regime = compute_segment_speed(
             grad,
             wind_speed,
+            wind_angle,
             c_rr,
             c_dA,
-            weight,
+            air_density,
+            weight_total,
             power_flat,
             power_climb,
-            max_downhill_speed
+            power_light_downhill,
+            power_heavy_downhill,
+            max_downhill_speed,
+            min_speed,
+            light_downhill_limit,
+            heavy_downhill_limit
         )
         v_ms = max(0.1, v_kmh / 3.6)
         dt = dist_m / v_ms
+
         times.append(times[-1] + dt)
         speeds_kmh.append(v_kmh)
+        F_grav_list.append(Fg)
+        F_roll_list.append(Fr)
+        F_aero_list.append(Fa)
+        regime_list.append(regime)
 
     df["speed_kmh"] = speeds_kmh
     df["time_s"] = times
     df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
+    df["F_grav"] = F_grav_list
+    df["F_roll"] = F_roll_list
+    df["F_aero"] = F_aero_list
+    df["regime"] = regime_list
     return df
 
 
@@ -449,40 +493,61 @@ def show_elevation_profile(df: pd.DataFrame):
 
 
 # ---------------------------------------------------------
+# SPEED CURVE VISUALIZATION
+# ---------------------------------------------------------
+def show_speed_curve(df: pd.DataFrame):
+    if "speed_kmh" not in df:
+        return
+
+    base = alt.Chart(df).encode(x=alt.X("km:Q", title="Distanz (km)"))
+
+    speed_line = base.mark_line(color="steelblue").encode(
+        y=alt.Y("speed_kmh:Q", title="Geschwindigkeit (km/h)")
+    )
+
+    grad_line = base.mark_line(color="orange").encode(
+        y=alt.Y("gradient:Q", title="Gradient (%)", axis=alt.Axis(titleColor="orange"))
+    )
+
+    chart = alt.layer(speed_line, grad_line).resolve_scale(y="independent").properties(height=250)
+    st.altair_chart(chart, use_container_width=True)
+
+
+# ---------------------------------------------------------
 # PAUSEN IN ZEITRECHNUNG (Option 2)
 # ---------------------------------------------------------
 def apply_pauses(df: pd.DataFrame, control_points, pauses):
-    # wir berechnen eine zusätzliche Spalte "sim_time_with_pauses"
     total_pause_s = 0.0
-    pause_events = []
+    pause_events = set()
+
+    df["sim_time_with_pauses"] = None
 
     for i in range(len(df)):
         km = df.iloc[i]["km"]
         base_time = df.iloc[i]["sim_time"]
 
-        # check CPs
+        # Kontrollpunkte
         for cp in control_points:
             try:
                 cp_km = float(cp["km"])
             except:
                 continue
-            if abs(km - cp_km) < 0.05:  # innerhalb 50 m
-                # wenn Pause hier noch nicht gezählt wurde:
-                key = ("cp", cp_km)
+            if abs(km - cp_km) < 0.05:
+                key = ("cp", round(cp_km, 2))
                 if key not in pause_events:
-                    pause_events.append(key)
+                    pause_events.add(key)
                     total_pause_s += cp.get("pause_min", 0) * 60
 
-        # check Pausenpunkte
+        # Pausenpunkte
         for p in pauses:
             try:
                 p_km = float(p["km"])
             except:
                 continue
             if abs(km - p_km) < 0.05:
-                key = ("pause", p_km)
+                key = ("pause", round(p_km, 2))
                 if key not in pause_events:
-                    pause_events.append(key)
+                    pause_events.add(key)
                     total_pause_s += p.get("pause_min", 0) * 60
 
         df.at[i, "sim_time_with_pauses"] = base_time + timedelta(seconds=total_pause_s)
@@ -509,26 +574,33 @@ if uploaded_files:
 
         df = parse_gpx(file)
         df = add_distance_and_gradient(df)
-        df = add_time_profile(
-            df,
-            c_rr=c_rr,
-            c_dA=c_dA,
-            weight=weight,
-            power_flat=power_flat,
-            power_climb=power_climb,
-            wind_speed=wind_speed,
-            max_downhill_speed=max_downhill_speed
-        )
+        df = add_time_profile(df)
         df = apply_pauses(df, st.session_state["control_points"], st.session_state["pauses"])
 
-        st.markdown("**Rohdaten & Simulation**")
-        st.dataframe(df[["lat", "lon", "km", "elevation", "gradient", "speed_kmh", "sim_time", "sim_time_with_pauses"]])
+        col1, col2 = st.columns(2)
 
-        st.subheader("🗺️ Karte")
-        show_map(df, st.session_state["control_points"], st.session_state["pauses"])
+        with col1:
+            st.markdown("**Rohdaten & Simulation (Auszug)**")
+            st.dataframe(
+                df[["km", "elevation", "gradient", "speed_kmh", "sim_time", "sim_time_with_pauses"]].head(500)
+            )
+
+        with col2:
+            st.subheader("🗺️ Karte")
+            show_map(df, st.session_state["control_points"], st.session_state["pauses"])
 
         st.subheader("⛰️ Höhenprofil")
         show_elevation_profile(df)
+
+        st.subheader("📈 Geschwindigkeitskurve")
+        show_speed_curve(df)
+
+        # Debug‑Panel
+        with st.expander("🔍 Debug‑Panel – Kräfte & Regime"):
+            st.markdown("**Kräfte (N) und Fahrregime (Auszug)**")
+            st.dataframe(
+                df[["km", "gradient", "speed_kmh", "F_grav", "F_roll", "F_aero", "regime"]].head(500)
+            )
 
         # Gesamtzeit
         finish_time = df.iloc[-1]["sim_time_with_pauses"]
@@ -547,5 +619,6 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
