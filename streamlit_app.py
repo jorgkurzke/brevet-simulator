@@ -180,55 +180,75 @@ def add_distance_and_gradient(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------
 # PHYSICS – SPEED MODEL
 # ---------------------------------------------------------
-def compute_segment_speed(gradient, wind_speed_kmh, c_rr, c_dA, weight_kg, power_flat, power_climb, max_downhill_speed_kmh):
+def compute_segment_speed(
+    gradient,
+    wind_speed_kmh,
+    c_rr,
+    c_dA,
+    weight_kg,
+    power_flat,
+    power_climb,
+    max_downhill_speed_kmh
+):
     g = 9.81
     rho = 1.225
     m = weight_kg
-
-    # wind: simple model – assume headwind if gradient >= 0, tailwind if < 0
     wind_ms = wind_speed_kmh / 3.6
-    # base power
+
+    slope = gradient / 100.0
+    theta = math.atan(abs(slope))
+
+    # ---------------------------------------------------------
+    # 1) STARKES GEFÄLLE → Fahrer rollt (Option D)
+    # ---------------------------------------------------------
+    if gradient <= -3.0:
+        v = 10.0
+        for _ in range(30):
+            F_grav = m * g * math.sin(theta)          # treibend
+            F_roll = m * g * c_rr * math.cos(theta)   # bremsend
+            F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
+            net = F_grav - F_roll - F_aero
+            v = max(0.1, v + 0.3 * net)
+        return min(v * 3.6, max_downhill_speed_kmh)
+
+    # ---------------------------------------------------------
+    # 2) LEICHTES GEFÄLLE → Fahrer tritt weiter
+    # ---------------------------------------------------------
+    if -3.0 < gradient < 0.0:
+        P = power_flat
+        grav_bonus = abs(gradient) * 0.5  # km/h Bonus pro %-Gefälle
+
+        # Leistungsmodell
+        v = 5.0
+        for _ in range(30):
+            F_roll = m * g * c_rr
+            F_grav = -m * g * math.sin(theta)  # unterstützt
+            F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
+            F_total = F_roll + F_aero - F_grav
+            v = max(0.1, P / F_total)
+
+        v_kmh = v * 3.6 + grav_bonus
+        return min(v_kmh, max_downhill_speed_kmh)
+
+    # ---------------------------------------------------------
+    # 3) FLACH / BERGAUF → normales Leistungsmodell
+    # ---------------------------------------------------------
     if gradient > 1.0:
         P = power_climb
-    elif gradient < -1.0:
-        # bergab: Leistung ignorieren, nur Gravitation – Widerstände
-        P = None
     else:
         P = power_flat
 
-    # if downhill and P is None: solve v from forces balance
-    if P is None:
-        # approximate equilibrium speed: m*g*sin(theta) = F_roll + F_aero
-        theta = math.atan(gradient / 100.0)
-        # iterate simple
-        v = 10.0  # m/s initial
-        for _ in range(20):
-            F_grav = m * g * math.sin(theta)
-            F_roll = m * g * c_rr * math.cos(theta)
-            F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
-            net = F_grav - F_roll - F_aero
-            v = max(0.1, v + 0.2 * net)  # simple relaxation
-        v_kmh = v * 3.6
-        return min(v_kmh, max_downhill_speed_kmh)
-
-    # otherwise: use power balance
-    # iterate to find v such that P ≈ v * (F_roll + F_grav + F_aero)
-    v = 5.0  # m/s initial
-    theta = math.atan(gradient / 100.0)
-    for _ in range(20):
-        F_roll = m * g * c_rr * math.cos(theta)
-        F_grav = m * g * math.sin(theta)
+    v = 5.0
+    for _ in range(30):
+        F_roll = m * g * c_rr
+        F_grav = m * g * math.sin(theta)  # bremst
         F_aero = 0.5 * rho * c_dA * (v + wind_ms)**2
-        denom = F_roll + F_grav + F_aero
-        if denom <= 0:
-            v = 0.1
-            break
-        v = max(0.1, P / denom)
-    v_kmh = v * 3.6
-    # bergab limit
-    if gradient < -1.0:
-        v_kmh = min(v_kmh, max_downhill_speed_kmh)
-    return v_kmh
+        F_total = F_roll + F_grav + F_aero
+        v = max(0.1, P / F_total)
+
+    return v * 3.6
+
+
 
 
 def add_time_profile(df: pd.DataFrame,
