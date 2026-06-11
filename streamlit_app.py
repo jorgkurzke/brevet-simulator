@@ -204,58 +204,49 @@ def compute_segment_speed(
     m = weight_total
     rho = air_density
 
-    # Wind in m/s
+    # Wind
     wind_ms = wind_speed_kmh / 3.6
     wind_factor = math.cos(math.radians(wind_angle_deg))
     effective_wind = wind_ms * wind_factor
 
     slope = gradient / 100.0
-    theta = math.atan(abs(slope))
 
-    # 1) Starkes Gefälle – rollen
+    # --- 1) Starkes Gefälle ---
     if gradient <= heavy_downhill_limit:
         regime = "heavy_downhill"
-        v = 10.0  # m/s Startwert
+        v = 12.0  # Startwert
 
         for _ in range(40):
-            F_grav = m * g * math.sin(theta)          # treibend
-            F_roll = m * g * c_rr * math.cos(theta)   # bremsend
+            F_grav = m * g * abs(slope)
+            F_roll = m * g * c_rr
             F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
 
             net = F_grav - F_roll - F_aero
-            v = max(0.1, v + 0.3 * net)
+            v = max(0.1, v + 0.25 * net)
 
-        v_kmh = min(v * 3.6, max_downhill_speed_kmh)
-        return v_kmh, F_grav, F_roll, F_aero, regime
+        return min(v * 3.6, max_downhill_speed_kmh), F_grav, F_roll, F_aero, regime
 
-    # 2) Leichtes Gefälle – weiter treten
+    # --- 2) Leichtes Gefälle ---
     if light_downhill_limit < gradient < 0:
         regime = "light_downhill"
         P = power_light_downhill
 
-        # Startwert: flache Geschwindigkeit + Bonus
-        v = max(10, (power_flat / (m * g * c_rr)) ** 0.5 * 3.6)
+        # realistische Startgeschwindigkeit
+        v = 7.0  # m/s = 25 km/h
 
         for _ in range(40):
-            v_ms = v / 3.6
-
             F_roll = m * g * c_rr
-            F_grav = m * g * abs(math.sin(theta))     # unterstützt
-            F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
+            F_grav = m * g * abs(slope)
+            F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
 
             F_total = F_roll + F_aero - F_grav
 
-            if F_total <= 0:
-                v_ms = v_ms + 0.2
-            else:
-                v_ms = P / F_total
+            # BestBikeSplit‑ähnlicher Integrator
+            v = max(0.1, v + 0.15 * (P - F_total * v) / (m * v))
 
-            v = max(5, v_ms * 3.6)
+        return min(v * 3.6, max_downhill_speed_kmh), F_grav, F_roll, F_aero, regime
 
-        v_kmh = min(v, max_downhill_speed_kmh)
-        return v_kmh, F_grav, F_roll, F_aero, regime
-
-    # 3) Flach / bergauf – Leistungsmodell
+    # --- 3) Flach / Bergauf ---
     if gradient > 1.0:
         regime = "climb"
         P = power_climb
@@ -263,26 +254,19 @@ def compute_segment_speed(
         regime = "flat"
         P = power_flat
 
-    v = 4.0  # m/s Startwert
+    v = 6.5  # m/s = 23.4 km/h
 
     for _ in range(40):
-        v_ms = v
-
         F_roll = m * g * c_rr
-        F_grav = m * g * math.sin(theta)
-        F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
+        F_grav = m * g * slope
+        F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
 
-        F_total = F_roll + F_grav + F_aero
+        F_total = F_roll + F_aero + F_grav
 
-        if F_total <= 0:
-            v_ms = 0.1
-        else:
-            v_ms = P / F_total
+        v = max(0.1, v + 0.12 * (P - F_total * v) / (m * v))
 
-        v = max(0.1, v_ms)
+    return max(v * 3.6, min_speed_kmh), F_grav, F_roll, F_aero, regime
 
-    v_kmh = max(v * 3.6, min_speed_kmh)
-    return v_kmh, F_grav, F_roll, F_aero, regime
 
 
 # ---------------------------------------------------------
