@@ -111,17 +111,17 @@ wind_angle = st.sidebar.slider("Windwinkel (°)", 0, 360, 180)
 # ---------------------------------------------------------
 # KONTROLLPUNKTE – VERZÖGERTER RERUN
 # ---------------------------------------------------------
-st.sidebar.header("📍 Kontrollpunkte")
+st.sidebar.header("📍 Kontrollen und Pausen")
 
 new_cp_km = st.sidebar.number_input(
-    "KM für neuen Kontrollpunkt",
+    "KM für neue Kontrolle/Pause",
     min_value=0.0,
     max_value=2000.0,
     value=st.session_state["new_cp_km"],
 )
 
 new_cp_name = st.sidebar.text_input(
-    "Name des Kontrollpunkts",
+    "Name der Kontrolle/Pause",
     value=st.session_state["new_cp_name"],
 )
 
@@ -132,7 +132,7 @@ new_cp_pause = st.sidebar.number_input(
     value=st.session_state["new_cp_pause"],
 )
 
-if st.sidebar.button("Kontrollpunkt hinzufügen"):
+if st.sidebar.button("Kontrolle/Pause hinzufügen"):
     st.session_state["pending_add_cp"] = {
         "km": new_cp_km,
         "name": new_cp_name,
@@ -204,7 +204,7 @@ if "pending_add_pause" in st.session_state:
 # ---------------------------------------------------------
 # ANZEIGE DER PUNKTE
 # ---------------------------------------------------------
-st.sidebar.subheader("Kontrollpunkte")
+st.sidebar.subheader("Kontrollen und Pausen")
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – {cp['pause_min']} min")
 
