@@ -208,9 +208,9 @@ st.sidebar.subheader("Kontrollpunkte")
 for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – {cp['pause_min']} min")
 
-st.sidebar.subheader("Pausenpunkte")
-for p in st.session_state["pauses"]:
-    st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
+#st.sidebar.subheader("Pausenpunkte")
+#for p in st.session_state["pauses"]:
+#   st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
 
 
 # ---------------------------------------------------------
