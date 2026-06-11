@@ -48,6 +48,13 @@ for key, value in DEFAULTS.items():
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
 ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 220, 5)
+
+# Leistungsprofile
+st.sidebar.subheader("Leistungsprofile")
+power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
+power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
+power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
+
 c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
 air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
 wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
