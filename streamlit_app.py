@@ -160,12 +160,12 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
 #    value=st.session_state["new_pause_min"],
 #)
 
-if st.sidebar.button("Pause hinzufügen"):
-    st.session_state["pending_add_pause"] = {
-        "km": new_pause_km,
-        "pause": new_pause_min,
-    }
-    st.session_state["trigger_rerun"] = True
+#if st.sidebar.button("Pause hinzufügen"):
+#    st.session_state["pending_add_pause"] = {
+#        "km": new_pause_km,
+#        "pause": new_pause_min,
+#    }
+#    st.session_state["trigger_rerun"] = True
 
 
 # ---------------------------------------------------------
