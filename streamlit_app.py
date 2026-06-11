@@ -83,7 +83,7 @@ if st.sidebar.button("Kontrollpunkt hinzufügen"):
         "pause_min": new_cp_pause
     })
 
-for i, cp in enumerate(st.session_state["control_points"]):
+for cp in st.session_state["control_points"]:
     st.sidebar.write(f"• {cp['km']} km – {cp['name']} – Pause: {cp['pause_min']} min")
 
 
@@ -104,7 +104,7 @@ if st.sidebar.button("Pause hinzufügen"):
         "pause_min": new_pause_min
     })
 
-for i, p in enumerate(st.session_state["pauses"]):
+for p in st.session_state["pauses"]:
     st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
 
 
@@ -204,9 +204,7 @@ def compute_segment_speed(
     m = weight_total
     rho = air_density
 
-    # Wind in m/s
     wind_ms = wind_speed_kmh / 3.6
-    # 0° = Rückenwind, 180° = Gegenwind
     wind_factor = math.cos(math.radians(wind_angle_deg))
     effective_wind = wind_ms * wind_factor
 
@@ -215,31 +213,27 @@ def compute_segment_speed(
 
     regime = "flat"
 
-    # ---------------------------------------------------------
-    # 1) STARKES GEFÄLLE → Fahrer rollt (keine Leistung)
-    # ---------------------------------------------------------
+    # starkes Gefälle – rollen
     if gradient <= heavy_downhill_limit:
         regime = "heavy_downhill"
-        v = 10.0  # m/s Startwert
+        v = 10.0
         for _ in range(40):
-            F_grav = m * g * math.sin(theta)          # treibend
-            F_roll = m * g * c_rr * math.cos(theta)   # bremsend
+            F_grav = m * g * math.sin(theta)
+            F_roll = m * g * c_rr * math.cos(theta)
             F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
             net = F_grav - F_roll - F_aero
             v = max(0.1, v + 0.3 * net)
         v_kmh = min(v * 3.6, max_downhill_speed_kmh)
         return v_kmh, F_grav, F_roll, F_aero, regime
 
-    # ---------------------------------------------------------
-    # 2) LEICHTES GEFÄLLE → Fahrer tritt weiter
-    # ---------------------------------------------------------
+    # leichtes Gefälle – weiter treten
     if light_downhill_limit < gradient < 0:
         regime = "light_downhill"
         P = power_light_downhill
         v = 5.0
         for _ in range(40):
             F_roll = m * g * c_rr
-            F_grav = -m * g * math.sin(theta)  # unterstützt
+            F_grav = -m * g * math.sin(theta)
             F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
             F_total = F_roll + F_aero - F_grav
             if F_total <= 0:
@@ -249,9 +243,7 @@ def compute_segment_speed(
         v_kmh = min(v * 3.6, max_downhill_speed_kmh)
         return v_kmh, F_grav, F_roll, F_aero, regime
 
-    # ---------------------------------------------------------
-    # 3) FLACH / BERGAUF → normales Leistungsmodell
-    # ---------------------------------------------------------
+    # flach / bergauf – Leistungsmodell
     if gradient > 1.0:
         regime = "climb"
         P = power_climb
@@ -262,7 +254,7 @@ def compute_segment_speed(
     v = 4.0
     for _ in range(40):
         F_roll = m * g * c_rr
-        F_grav = m * g * math.sin(theta)  # bremst
+        F_grav = m * g * math.sin(theta)
         F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
         F_total = F_roll + F_grav + F_aero
         if F_total <= 0:
@@ -275,7 +267,7 @@ def compute_segment_speed(
 
 
 def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
-    times = [0.0]  # seconds from start
+    times = [0.0]
     speeds_kmh = [0.0]
     F_grav_list = [0.0]
     F_roll_list = [0.0]
@@ -346,7 +338,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
 
     layers = []
 
-    # Track
     layers.append(
         pdk.Layer(
             "PathLayer",
@@ -358,7 +349,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # Start
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
@@ -369,7 +359,6 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # Ziel
     layers.append(
         pdk.Layer(
             "ScatterplotLayer",
@@ -380,11 +369,8 @@ def show_map(df: pd.DataFrame, control_points, pauses):
         )
     )
 
-    # Kontrollpunkte
     cp_data = []
     for cp in control_points:
-        if "km" not in cp:
-            continue
         try:
             target_km = float(cp["km"])
         except:
@@ -408,11 +394,8 @@ def show_map(df: pd.DataFrame, control_points, pauses):
             )
         )
 
-    # Pausenpunkte
     pause_data = []
     for p in pauses:
-        if "km" not in p:
-            continue
         try:
             target_km = float(p["km"])
         except:
@@ -519,14 +502,12 @@ def show_speed_curve(df: pd.DataFrame):
 def apply_pauses(df: pd.DataFrame, control_points, pauses):
     total_pause_s = 0.0
     pause_events = set()
-
     df["sim_time_with_pauses"] = None
 
     for i in range(len(df)):
         km = df.iloc[i]["km"]
         base_time = df.iloc[i]["sim_time"]
 
-        # Kontrollpunkte
         for cp in control_points:
             try:
                 cp_km = float(cp["km"])
@@ -538,7 +519,6 @@ def apply_pauses(df: pd.DataFrame, control_points, pauses):
                     pause_events.add(key)
                     total_pause_s += cp.get("pause_min", 0) * 60
 
-        # Pausenpunkte
         for p in pauses:
             try:
                 p_km = float(p["km"])
@@ -553,6 +533,84 @@ def apply_pauses(df: pd.DataFrame, control_points, pauses):
         df.at[i, "sim_time_with_pauses"] = base_time + timedelta(seconds=total_pause_s)
 
     return df
+
+
+# ---------------------------------------------------------
+# SUMMARY TABLE (Start, CPs, Pausen, Ziel)
+# ---------------------------------------------------------
+def build_summary_table(df, control_points, pauses):
+    points = []
+
+    points.append({
+        "km": 0.0,
+        "name": "Start",
+        "pause_min": 0
+    })
+
+    for cp in control_points:
+        points.append({
+            "km": float(cp["km"]),
+            "name": cp["name"],
+            "pause_min": cp.get("pause_min", 0)
+        })
+
+    for p in pauses:
+        points.append({
+            "km": float(p["km"]),
+            "name": "Pause",
+            "pause_min": p.get("pause_min", 0)
+        })
+
+    points.append({
+        "km": float(df["km"].iloc[-1]),
+        "name": "Ziel",
+        "pause_min": 0
+    })
+
+    points = sorted(points, key=lambda x: x["km"])
+
+    rows = []
+    start_time_with_pauses = df["sim_time_with_pauses"].iloc[0]
+    last_km = 0.0
+    last_time = start_time_with_pauses
+    last_elev = df["elevation"].iloc[0] if "elevation" in df else 0
+
+    for p in points:
+        nearest = df.iloc[(df["km"] - p["km"]).abs().argmin()]
+
+        km_total = float(nearest["km"])
+        km_diff = km_total - last_km
+
+        time_total = nearest["sim_time_with_pauses"]
+        time_diff = time_total - last_time
+
+        elev_total = float(nearest["elevation"]) if "elevation" in df else 0.0
+        elev_diff = elev_total - last_elev
+
+        hours_total = (time_total - start_time_with_pauses).total_seconds() / 3600
+        hours_diff = time_diff.total_seconds() / 3600
+
+        avg_speed_total = km_total / hours_total if hours_total > 0 else 0
+        avg_speed_diff = km_diff / hours_diff if hours_diff > 0 else 0
+
+        rows.append({
+            "Name": p["name"],
+            "KM gesamt": round(km_total, 2),
+            "KM seit letztem Punkt": round(km_diff, 2),
+            "HM gesamt": round(elev_total, 0),
+            "HM seit letztem Punkt": round(elev_diff, 0),
+            "Zeit gesamt": time_total.strftime("%Y-%m-%d %H:%M:%S"),
+            "Zeit seit letztem Punkt": str(time_diff),
+            "Ø‑Speed gesamt (km/h)": round(avg_speed_total, 1),
+            "Ø‑Speed Abschnitt (km/h)": round(avg_speed_diff, 1),
+            "Pause (min)": p["pause_min"]
+        })
+
+        last_km = km_total
+        last_time = time_total
+        last_elev = elev_total
+
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------
@@ -595,14 +653,20 @@ if uploaded_files:
         st.subheader("📈 Geschwindigkeitskurve")
         show_speed_curve(df)
 
-        # Debug‑Panel
         with st.expander("🔍 Debug‑Panel – Kräfte & Regime"):
             st.markdown("**Kräfte (N) und Fahrregime (Auszug)**")
             st.dataframe(
                 df[["km", "gradient", "speed_kmh", "F_grav", "F_roll", "F_aero", "regime"]].head(500)
             )
 
-        # Gesamtzeit
+        st.subheader("📋 Kontroll‑ & Pausentabelle")
+        summary_df = build_summary_table(
+            df,
+            st.session_state["control_points"],
+            st.session_state["pauses"]
+        )
+        st.dataframe(summary_df)
+
         finish_time = df.iloc[-1]["sim_time_with_pauses"]
         total_time = finish_time - start_datetime
         st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time}")
@@ -619,6 +683,7 @@ if uploaded_files:
     )
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
 
 
 
