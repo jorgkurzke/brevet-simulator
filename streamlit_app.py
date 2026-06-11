@@ -628,7 +628,7 @@ if uploaded_files:
 
         # Höhenprofil
         st.subheader("⛰️ Höhenprofil")
-        show_elevation(df)
+        show_elevation_profile(df)
 
         # Speed
         st.subheader("📈 Geschwindigkeitskurve")
