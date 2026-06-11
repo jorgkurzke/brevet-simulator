@@ -204,6 +204,7 @@ def compute_segment_speed(
     m = weight_total
     rho = air_density
 
+    # Wind in m/s
     wind_ms = wind_speed_kmh / 3.6
     wind_factor = math.cos(math.radians(wind_angle_deg))
     effective_wind = wind_ms * wind_factor
@@ -211,57 +212,56 @@ def compute_segment_speed(
     slope = gradient / 100.0
     theta = math.atan(abs(slope))
 
-    regime = "flat"
-
-    # starkes Gefälle – rollen
+    # ---------------------------------------------------------
+    # 1) STARKES GEFÄLLE → Fahrer rollt (keine Leistung)
+    # ---------------------------------------------------------
     if gradient <= heavy_downhill_limit:
         regime = "heavy_downhill"
-        v = 10.0
+        v = 10.0  # m/s Startwert
+
         for _ in range(40):
-            F_grav = m * g * math.sin(theta)
-            F_roll = m * g * c_rr * math.cos(theta)
+            F_grav = m * g * math.sin(theta)          # treibend
+            F_roll = m * g * c_rr * math.cos(theta)   # bremsend
             F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
+
             net = F_grav - F_roll - F_aero
             v = max(0.1, v + 0.3 * net)
+
         v_kmh = min(v * 3.6, max_downhill_speed_kmh)
         return v_kmh, F_grav, F_roll, F_aero, regime
 
-    # leichtes Gefälle – weiter treten
     # ---------------------------------------------------------
-# 2) LEICHTES GEFÄLLE → Fahrer tritt weiter (realistisch)
-# ---------------------------------------------------------
-if light_downhill_limit < gradient < 0:
-    regime = "light_downhill"
-    P = power_light_downhill
+    # 2) LEICHTES GEFÄLLE → Fahrer tritt weiter (realistisch)
+    # ---------------------------------------------------------
+    if light_downhill_limit < gradient < 0:
+        regime = "light_downhill"
+        P = power_light_downhill
 
-    # Startwert: flache Geschwindigkeit + Bonus
-    v = (power_flat / (m * g * c_rr)) ** 0.5 * 3.6
-    v = max(v, 10)  # mindestens 10 km/h
+        # Startwert: flache Geschwindigkeit + Bonus
+        v = max(10, (power_flat / (m * g * c_rr)) ** 0.5 * 3.6)
 
-    for _ in range(40):
-        v_ms = v / 3.6
+        for _ in range(40):
+            v_ms = v / 3.6
 
-        # Kräfte
-        F_roll = m * g * c_rr
-        F_grav = m * g * abs(math.sin(theta))  # unterstützt
-        F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
+            F_roll = m * g * c_rr
+            F_grav = m * g * abs(math.sin(theta))     # unterstützt
+            F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
 
-        # Netto-Widerstand
-        F_total = F_roll + F_aero - F_grav
+            F_total = F_roll + F_aero - F_grav
 
-        # Neue Geschwindigkeit aus Leistungsbilanz
-        if F_total <= 0:
-            v_ms = v_ms + 0.2  # leicht beschleunigen
-        else:
-            v_ms = P / F_total
+            if F_total <= 0:
+                v_ms = v_ms + 0.2
+            else:
+                v_ms = P / F_total
 
-        v = max(5, v_ms * 3.6)
+            v = max(5, v_ms * 3.6)
 
-    v_kmh = min(v, max_downhill_speed_kmh)
-    return v_kmh, F_grav, F_roll, F_aero, regime
+        v_kmh = min(v, max_downhill_speed_kmh)
+        return v_kmh, F_grav, F_roll, F_aero, regime
 
-
-    # flach / bergauf – Leistungsmodell
+    # ---------------------------------------------------------
+    # 3) FLACH / BERGAUF → Leistungsmodell
+    # ---------------------------------------------------------
     if gradient > 1.0:
         regime = "climb"
         P = power_climb
@@ -269,76 +269,27 @@ if light_downhill_limit < gradient < 0:
         regime = "flat"
         P = power_flat
 
-    v = 4.0
+    v = 4.0  # m/s Startwert
+
     for _ in range(40):
+        v_ms = v
+
         F_roll = m * g * c_rr
         F_grav = m * g * math.sin(theta)
-        F_aero = 0.5 * rho * c_dA * (v + effective_wind)**2
+        F_aero = 0.5 * rho * c_dA * (v_ms + effective_wind)**2
+
         F_total = F_roll + F_grav + F_aero
+
         if F_total <= 0:
-            v = 0.1
-            break
-        v = max(0.1, P / F_total)
+            v_ms = 0.1
+        else:
+            v_ms = P / F_total
+
+        v = max(0.1, v_ms)
 
     v_kmh = max(v * 3.6, min_speed_kmh)
     return v_kmh, F_grav, F_roll, F_aero, regime
 
-
-def add_time_profile(df: pd.DataFrame) -> pd.DataFrame:
-    times = [0.0]
-    speeds_kmh = [0.0]
-    F_grav_list = [0.0]
-    F_roll_list = [0.0]
-    F_aero_list = [0.0]
-    regime_list = ["start"]
-
-    for i in range(1, len(df)):
-        grad = df.iloc[i]["gradient"]
-        dist_m = df.iloc[i]["distance_m"] - df.iloc[i-1]["distance_m"]
-        if dist_m <= 0:
-            times.append(times[-1])
-            speeds_kmh.append(speeds_kmh[-1])
-            F_grav_list.append(F_grav_list[-1])
-            F_roll_list.append(F_roll_list[-1])
-            F_aero_list.append(F_aero_list[-1])
-            regime_list.append(regime_list[-1])
-            continue
-
-        v_kmh, Fg, Fr, Fa, regime = compute_segment_speed(
-            grad,
-            wind_speed,
-            wind_angle,
-            c_rr,
-            c_dA,
-            air_density,
-            weight_total,
-            power_flat,
-            power_climb,
-            power_light_downhill,
-            power_heavy_downhill,
-            max_downhill_speed,
-            min_speed,
-            light_downhill_limit,
-            heavy_downhill_limit
-        )
-        v_ms = max(0.1, v_kmh / 3.6)
-        dt = dist_m / v_ms
-
-        times.append(times[-1] + dt)
-        speeds_kmh.append(v_kmh)
-        F_grav_list.append(Fg)
-        F_roll_list.append(Fr)
-        F_aero_list.append(Fa)
-        regime_list.append(regime)
-
-    df["speed_kmh"] = speeds_kmh
-    df["time_s"] = times
-    df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
-    df["F_grav"] = F_grav_list
-    df["F_roll"] = F_roll_list
-    df["F_aero"] = F_aero_list
-    df["regime"] = regime_list
-    return df
 
 
 # ---------------------------------------------------------
