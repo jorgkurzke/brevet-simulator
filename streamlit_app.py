@@ -631,9 +631,14 @@ if uploaded_files:
         # -----------------------------
         # ZUSAMMENFASSUNG
         # -----------------------------
-        st.subheader("📋 Kontroll‑ & Pausentabelle")
-        summary_df = build_summary_table(df)
-        st.dataframe(summary_df)
+       st.subheader("📋 Kontroll‑ & Pausentabelle")
+       summary_df = build_summary_table(
+           df,
+           st.session_state["control_points"],
+           st.session_state["pauses"]
+       )
+
+       st.dataframe(summary_df)
 
         # -----------------------------
         # EXCEL EXPORT
