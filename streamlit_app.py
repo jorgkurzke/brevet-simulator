@@ -22,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("Brevet GPX Analyzer & Simulator")
+st.title("Brevet GPX Analyzer & Simulator – Version B.2")
 
 
 # ---------------------------------------------------------
@@ -214,25 +214,20 @@ for cp in st.session_state["control_points"]:
 
 
 # ---------------------------------------------------------
-# HELPERS
+# GPX PARSER
 # ---------------------------------------------------------
-def safe_sheet_name(name: str) -> str:
-    for ch in ['\\', '/', '*', '?', ':', '[', ']']:
-        name = name.replace(ch, '_')
-    return name[:31]
-
-
 def parse_gpx(file) -> pd.DataFrame:
     tree = ET.parse(file)
     root = tree.getroot()
-    ns = {"default": "http://www.topografix.com/GPX/1/1"}
+    ns = {"g": "http://www.topografix.com/GPX/1/1"}
 
     data = []
-    for trkpt in root.findall(".//default:trkpt", ns):
-        lat = float(trkpt.attrib["lat"])
-        lon = float(trkpt.attrib["lon"])
-        ele = trkpt.find("default:ele", ns)
-        time = trkpt.find("default:time", ns)
+    for pt in root.findall(".//g:trkpt", ns):
+        lat = float(pt.attrib["lat"])
+        lon = float(pt.attrib["lon"])
+        ele = pt.find("g:ele", ns)
+        time = pt.find("g:time", ns)
+
         data.append({
             "lat": lat,
             "lon": lon,
@@ -243,17 +238,25 @@ def parse_gpx(file) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
+# ---------------------------------------------------------
+# HAVERSINE DISTANCE
+# ---------------------------------------------------------
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
     phi1, phi2 = map(math.radians, [lat1, lat2])
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
+
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+# ---------------------------------------------------------
+# DISTANZ + STEIGUNG
+# ---------------------------------------------------------
 def add_distance_and_gradient(df):
     distances = [0.0]
+
     for i in range(1, len(df)):
         d = haversine(df.lat[i-1], df.lon[i-1], df.lat[i], df.lon[i])
         distances.append(distances[-1] + d)
@@ -270,8 +273,10 @@ def add_distance_and_gradient(df):
         df["gradient"] = 0.0
 
     return df
+
+
 # ---------------------------------------------------------
-# SPEED MODEL
+# SPEED MODEL (Version B.2)
 # ---------------------------------------------------------
 def compute_speed(gradient):
     g = gradient
@@ -302,6 +307,9 @@ def compute_speed(gradient):
     return max(v, min_speed)
 
 
+# ---------------------------------------------------------
+# ZEITPROFIL
+# ---------------------------------------------------------
 def add_time_profile(df):
     times = [0.0]
     speeds = [0.0]
@@ -327,7 +335,7 @@ def add_time_profile(df):
 
 
 # ---------------------------------------------------------
-# PAUSE LOGIC
+# PAUSENLOGIK
 # ---------------------------------------------------------
 def apply_pauses(df):
     total_pause = 0
@@ -357,10 +365,8 @@ def apply_pauses(df):
         df.at[i, "sim_time_with_pauses"] = base_time + timedelta(seconds=total_pause)
 
     return df
-
-
 # ---------------------------------------------------------
-# VISUALS
+# VISUALISIERUNG – KARTE
 # ---------------------------------------------------------
 def show_map(df):
     if df.empty:
@@ -415,54 +421,29 @@ def show_map(df):
     )
 
 
-def show_elevation_profile(df: pd.DataFrame):
-    if "elevation" not in df or df["elevation"].isna().all():
-        st.info("Keine Höhendaten in dieser GPX-Datei.")
+# ---------------------------------------------------------
+# VISUALISIERUNG – HÖHENPROFIL
+# ---------------------------------------------------------
+def show_elevation(df):
+    if df.elevation.isna().all():
+        st.info("Keine Höhendaten.")
         return
 
-    # Steigung berechnen
-    df["delta_h"] = df["elevation"].diff()
-    df["delta_m"] = df["distance_m"].diff()
-    df["gradient"] = (df["delta_h"] / df["delta_m"]) * 100
-    df["gradient"] = df["gradient"].fillna(0)
+    df_plot = df.copy()
+    df_plot["elevation_smooth"] = df_plot.elevation.rolling(25, center=True, min_periods=1).mean()
 
-    # Glätten
-    df["gradient_smooth"] = df["gradient"].rolling(window=5, center=True, min_periods=1).mean()
-
-    # Farben
-    def gradient_color(g):
-        if g < 2:
-            return "green"
-        elif g < 5:
-            return "yellow"
-        elif g < 8:
-            return "orange"
-        else:
-            return "red"
-
-    df["color"] = df["gradient_smooth"].apply(gradient_color)
-
-    # Balken-Höhenprofil
     chart = (
-        alt.Chart(df)
-        .mark_bar()
-        .encode(
-            x=alt.X("km:Q", title="Distanz (km)"),
-            y=alt.Y("elevation:Q", title="Höhe (m)"),
-            color=alt.Color("color:N", scale=None, legend=None),
-            tooltip=[
-                alt.Tooltip("km:Q", title="km"),
-                alt.Tooltip("elevation:Q", title="Höhe (m)"),
-                alt.Tooltip("gradient_smooth:Q", title="Steigung (%)")
-            ]
-        )
+        alt.Chart(df_plot)
+        .mark_line(color="steelblue")
+        .encode(x="km", y="elevation_smooth")
         .properties(height=250)
     )
-
     st.altair_chart(chart, use_container_width=True)
 
 
-
+# ---------------------------------------------------------
+# VISUALISIERUNG – SPEED
+# ---------------------------------------------------------
 def show_speed(df):
     chart = (
         alt.Chart(df)
@@ -474,14 +455,12 @@ def show_speed(df):
 
 
 # ---------------------------------------------------------
-# SUMMARY TABLE
+# ZUSAMMENFASSUNG – Version B.2 (10 Spalten)
 # ---------------------------------------------------------
 def build_summary(df):
-    def fmt_decimal(value, digits=1):
-        return f"{value:.{digits}f}".replace(".", ",")
 
     def fmt_km(value):
-        return f"{int(round(value))}"
+        return int(round(value))
 
     def fmt_hhmm(td):
         total = int(td.total_seconds())
@@ -489,8 +468,11 @@ def build_summary(df):
         m = (total % 3600) // 60
         return f"{h:02d}:{m:02d}"
 
-    def fmt_datetime(dt):
-        return dt.strftime("%d.%m.%Y %H:%M")
+    def fmt_speed(km, td):
+        hours = td.total_seconds() / 3600
+        if hours <= 0:
+            return 0
+        return round(km / hours)
 
     points = [{"km": 0.0, "name": "Start", "pause_min": 0}]
     points += st.session_state["control_points"]
@@ -502,6 +484,7 @@ def build_summary(df):
     rows = []
     last_km = 0
     last_time = df.sim_time_with_pauses.iloc[0]
+    start_time = df.sim_time_with_pauses.iloc[0]
     last_elev = df.elevation.iloc[0]
 
     for p in points:
@@ -519,8 +502,10 @@ def build_summary(df):
             "KM Abschnitt": fmt_km(km_diff),
             "HM gesamt": int(round(elev_total)),
             "HM Abschnitt": int(round(elev_diff)),
-            "Zeit gesamt": fmt_hhmm(time_total - df.sim_time_with_pauses.iloc[0]),
+            "Zeit gesamt": fmt_hhmm(time_total - start_time),
             "Zeit Abschnitt": fmt_hhmm(time_diff),
+            "Ø‑km/h gesamt": fmt_speed(km_total, time_total - start_time),
+            "Ø‑km/h Abschnitt": fmt_speed(km_diff, time_diff),
             "Pause (min)": p["pause_min"],
         })
 
@@ -532,7 +517,75 @@ def build_summary(df):
 
 
 # ---------------------------------------------------------
-# MAIN – GPX UPLOAD
+# EXCEL EXPORT
+# ---------------------------------------------------------
+def export_summary_excel(summary_df):
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+        summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
+    return excel_buffer.getvalue()
+# ---------------------------------------------------------
+# PDF EXPORT – KOMPAKT (A1, 10 SPALTEN)
+# ---------------------------------------------------------
+def export_summary_pdf(summary_df):
+    pdf_buffer = BytesIO()
+    c = canvas.Canvas(pdf_buffer, pagesize=A4)
+    width, height = A4
+
+    # Layout
+    x_positions = [20, 80, 130, 170, 210, 250, 300, 350, 400, 450]
+    headers = [
+        "Name", "KM ges.", "KM Abs.", "HM ges.", "HM Abs.",
+        "Zeit ges.", "Zeit Abs.", "Ø km/h g.", "Ø km/h A.", "Pause"
+    ]
+
+    y = height - 30
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(20, y, "Brevet Zusammenfassung")
+    y -= 20
+
+    # Header
+    c.setFont("Helvetica-Bold", 7)
+    for x, h in zip(x_positions, headers):
+        c.drawString(x, y, h)
+
+    y -= 8
+    c.line(15, y, width - 15, y)
+    y -= 10
+
+    # Rows
+    c.setFont("Helvetica", 7)
+
+    for _, row in summary_df.iterrows():
+        values = [
+            row["Name"],
+            row["KM gesamt"],
+            row["KM Abschnitt"],
+            row["HM gesamt"],
+            row["HM Abschnitt"],
+            row["Zeit gesamt"],
+            row["Zeit Abschnitt"],
+            row["Ø‑km/h gesamt"],
+            row["Ø‑km/h Abschnitt"],
+            row["Pause (min)"],
+        ]
+
+        for x, v in zip(x_positions, values):
+            c.drawString(x, y, str(v))
+
+        y -= 10
+
+        if y < 40:
+            c.showPage()
+            y = height - 40
+            c.setFont("Helvetica", 7)
+
+    c.save()
+    return pdf_buffer.getvalue()
+
+
+# ---------------------------------------------------------
+# GPX UPLOAD + HAUPTAUSGABE
 # ---------------------------------------------------------
 uploaded_files = st.file_uploader(
     "GPX-Dateien hochladen",
@@ -546,166 +599,67 @@ if uploaded_files:
     for file in uploaded_files:
         st.subheader(f"📍 {file.name}")
 
-        # GPX einlesen
         df = parse_gpx(file)
         df = add_distance_and_gradient(df)
         df = add_time_profile(df)
         df = apply_pauses(df)
 
-        # -----------------------------
-        # DATENANZEIGE
-        # -----------------------------
-        col1, col2 = st.columns(2)
+        # Karte
+        st.subheader("🗺️ Karte")
+        show_map(df)
 
-        with col1:
-            st.markdown("**Rohdaten & Simulation (Auszug)**")
-            st.dataframe(
-                df[[
-                    "km",
-                    "elevation",
-                    "gradient",
-                    "speed_kmh",
-                    "sim_time",
-                    "sim_time_with_pauses"
-                ]].head(500)
-            )
-
-        with col2:
-            st.subheader("🗺️ Karte")
-            show_map(df)
-
-        # -----------------------------
-        # HÖHENPROFIL
-        # -----------------------------
+        # Höhenprofil
         st.subheader("⛰️ Höhenprofil")
-        show_elevation_profile(df)
-        
-        # -----------------------------
-        # GESCHWINDIGKEITSKURVE
-        # -----------------------------
+        show_elevation(df)
+
+        # Speed
         st.subheader("📈 Geschwindigkeitskurve")
         show_speed(df)
 
-        # -----------------------------
-        # REGIME-TABELLE
-        # -----------------------------
-        with st.expander("🔍 Regime je Abschnitt"):
-            st.dataframe(
-                df[["km", "gradient", "speed_kmh"]].head(500)
-            )
-
-        # -----------------------------
-        # ZUSAMMENFASSUNG
-        # -----------------------------
+        # Summary
         st.subheader("📋 Kontroll‑ & Pausentabelle")
-        summary_df = build_summary_table(
-            df,
-            st.session_state["control_points"],
-            st.session_state["pauses"]
-        )
+        summary_df = build_summary(df)
         st.dataframe(summary_df)
 
-        # -----------------------------
-        # EXCEL EXPORT
-        # -----------------------------
-        summary_excel = BytesIO()
-        with pd.ExcelWriter(summary_excel, engine="xlsxwriter") as writer:
-            summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
-
+        # Excel Export
         st.download_button(
-            label="📥 Zusammenfassung als Excel",
-            data=summary_excel.getvalue(),
+            "📥 Excel Export",
+            export_summary_excel(summary_df),
             file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # -------------------------------------------------------------
-        # PDF EXPORT – SAUBERE TABELLE
-        # -------------------------------------------------------------
-        pdf_buffer = BytesIO()
-        c = canvas.Canvas(pdf_buffer, pagesize=A4)
-        width, height = A4
-        
-        # Tabellen-Startposition
-        x0 = 30
-        y0 = height - 40
-        line_height = 14
-        
-        # Titel
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(x0, y0, "Brevet Zusammenfassung")
-        y0 -= 25
-        
-        # Spaltenüberschriften
-        headers = [
-            "Name", "KM gesamt", "KM Abschnitt", "HM gesamt", "HM Abschnitt",
-            "Zeit gesamt", "Zeit Abschnitt", "Ø‑km/h gesamt", "Ø‑km/h Abschnitt", "Pause (min)"
-        ]
-        
-        x_positions = [30, 120, 170, 230, 280, 330, 420, 510]
-        
-        c.setFont("Helvetica-Bold", 9)
-        for x, h in zip(x_positions, headers):
-            c.drawString(x, y0, h)
-        
-        y0 -= 12
-        c.line(25, y0, width - 25, y0)
-        y0 -= 10
-        
-        # Tabelleninhalt
-        c.setFont("Helvetica", 9)
-        
-        for _, row in summary_df.iterrows():
-            values = [
-                row["Name"],
-                row["KM gesamt"],
-                row["KM Abschnitt"],
-                row["HM gesamt"],
-                row["HM Abschnitt"],
-                row["Zeit gesamt"],
-                row["Zeit Abschnitt"],
-                row["Ø‑km/h gesamt"],
-                row["Ø‑km/h Abschnitt"],
-                row["Pause (min)"],
-            ]
-        
-            for x, v in zip(x_positions, values):
-                c.drawString(x, y0, str(v))
-        
-            y0 -= line_height
-        
-            if y0 < 40:
-                c.showPage()
-                y0 = height - 40
-                c.setFont("Helvetica", 9)
-        
-        c.save()
+        # PDF Export
+        st.download_button(
+            "📄 PDF Export (kompakt)",
+            export_summary_pdf(summary_df),
+            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
 
+        # Ankunftszeit
+        finish_time = df.sim_time_with_pauses.iloc[-1]
+        total_time = finish_time - start_datetime
 
-    # -----------------------------------------------------
-    # GESAMT-EXCEL EXPORT
-    # -----------------------------------------------------
-    excel_all = BytesIO()
-    with pd.ExcelWriter(excel_all, engine="xlsxwriter") as writer:
-        for name, df in all_dfs.items():
-            sheet = safe_sheet_name(name)
-            df.to_excel(writer, sheet_name=sheet, index=False)
+        st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time.strftime('%d.%m.%Y %H:%M')}")
 
-    st.download_button(
-        label="📥 Excel Export (alle Daten)",
-        data=excel_all.getvalue(),
-        file_name=f"brevet_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        total_hours = int(total_time.total_seconds() // 3600)
+        total_minutes = int((total_time.total_seconds() % 3600) // 60)
+        st.markdown(f"**Gesamtzeit:** {total_hours:02d}:{total_minutes:02d} Std")
+
+        all_dfs[file.name] = df
 
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
+
+
 # ---------------------------------------------------------
-# RERUN-FLAG AUSWERTEN (MUSS GANZ UNTEN STEHEN)
+# CLOUD‑STABILER RERUN (OHNE experimental_rerun)
 # ---------------------------------------------------------
 if st.session_state.get("trigger_rerun", False):
     st.session_state["trigger_rerun"] = False
     st.session_state["__rerun_placeholder"] = datetime.now().timestamp()
+
 
 
 
