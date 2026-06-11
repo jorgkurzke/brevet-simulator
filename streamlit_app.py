@@ -544,7 +544,7 @@ if uploaded_files:
         # HÖHENPROFIL
         # -----------------------------
         st.subheader("⛰️ Höhenprofil")
-        show_elevation(df)
+        show_elevation_profile(df: pd.DataFrame)
 
         # -----------------------------
         # GESCHWINDIGKEITSKURVE
