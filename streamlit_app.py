@@ -122,7 +122,7 @@ wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwi
 # ---------------------------------------------------------
 # KONTROLLPUNKTE – VERZÖGERTER RERUN
 # ---------------------------------------------------------
-st.sidebar.header("📍 Kontrollen und Pausen")
+st.sidebar.header("📍 Kontrollen und Pausen - Daten überschreiben")
 
 new_cp_km = st.sidebar.number_input(
     "KM für neue Kontrolle/Pause",
