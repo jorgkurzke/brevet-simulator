@@ -538,49 +538,33 @@ uploaded = st.file_uploader("GPX-Datei hochladen", type=["gpx"])
 if uploaded:
     # GPX einlesen
     df_raw = parse_gpx(uploaded)
-
-    # Downsampling (10× schneller)
-    df = downsample(df_raw, 1500)
-    # Gradient-Fix für Folium/Branca
-    df["gradient"] = df["gradient"].replace([np.inf, -np.inf], np.nan)
-    df["gradient"] = df["gradient"].fillna(0)
     
-    # Extremwerte kappen (GPX-Sprünge)
-    df["gradient"] = df["gradient"].clip(-30, 30)
-
-    # Parameter-Bundle
-    params = {
-        "weight": weight,
-        "cda": cda,
-        "crr": crr,
-        "wind": wind,
-        "wind_ang": wind_ang,
-        "max_down": max_down,
-        "min_spd": min_spd,
-
-        "spd_down": spd_down,
-        "spd_ldown": spd_ldown,
-        "spd_flat": spd_flat,
-        "spd_lup": spd_lup,
-        "spd_mup": spd_mup,
-        "spd_sup": spd_sup,
-        "spd_vs_up": spd_vs_up,
-
-        "w_flat": w_flat,
-        "w_up": w_up,
-        "w_down": w_down,
-
-        "ftp": ftp,
-        "hybrid_factor": hybrid_factor,
-    }
-
-
+    # Downsampling
+    df = downsample(df_raw, 1500)
+    
+    # Distanz berechnen
+    df["distance_m"] = compute_distance(df)
+    df["km"] = df["distance_m"] / 1000
+    
+    # Gradient berechnen
+    df["gradient"] = compute_gradient(df)
+    df["gradient"] = df["gradient"].replace([np.inf, -np.inf], np.nan).fillna(0).clip(-30, 30)
+    
+    # Geschwindigkeit berechnen
+    df["speed_kmh"] = compute_speed(df, params)
+    
     # Zeitprofil berechnen
+    df["time_s"] = compute_time(df["speed_kmh"], df["km"])
+    df["cum_seconds"] = df["time_s"].cumsum()
+    
+    # ACP-Zeiten berechnen (falls benötigt)
     df, df_acp = add_time_profile(df, params)
-
+    
     # Gesamtzeit
     total_seconds = df["cum_seconds"].iloc[-1]
     total_time = dt.timedelta(seconds=int(total_seconds))
+    st.metric("Gesamtzeit", str(total_time))
+
     st.metric("Gesamtzeit", str(total_time))
 # -----------------------------------------------------
 # HÖHENPROFIL + KARTE
