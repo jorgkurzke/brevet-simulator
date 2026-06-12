@@ -81,18 +81,21 @@ def parse_gpx(file) -> pd.DataFrame:
     lats = []
     lons = []
     elevs = []
-    dists = [0.0]
+    dists = []
 
-    last_point = None
     total_dist = 0.0
+    last_point = None
 
     for track in gpx.tracks:
         for segment in track.segments:
             for point in segment.points:
+
+                # Koordinaten
                 lats.append(point.latitude)
                 lons.append(point.longitude)
                 elevs.append(point.elevation)
 
+                # Distanz
                 if last_point is not None:
                     dx = gpxpy.geo.haversine_distance(
                         last_point.latitude,
@@ -100,14 +103,15 @@ def parse_gpx(file) -> pd.DataFrame:
                         point.latitude,
                         point.longitude
                     )
-                    if dx is None:
+                    if dx is None or math.isnan(dx):
                         dx = 0.0
                     total_dist += dx
+
                 dists.append(total_dist)
                 last_point = point
 
-    # Länge anpassen (dists hat 1 Element mehr)
-    dists = dists[:len(lats)]
+            # Segmentende → last_point NICHT zurücksetzen!
+            # Sonst gäbe es Distanzsprünge
 
     df = pd.DataFrame({
         "lat": lats,
@@ -116,20 +120,23 @@ def parse_gpx(file) -> pd.DataFrame:
         "distance_m": dists
     })
 
-    df["distance_m"] = df["distance_m"].fillna(method="ffill").fillna(0.0)
-    df["elev"] = df["elev"].fillna(method="ffill").fillna(df["elev"].mean())
+    # Fehlende Werte stabilisieren
+    df["distance_m"] = df["distance_m"].astype(float)
+    df["elev"] = df["elev"].astype(float)
 
-    # Gradient berechnen
+    df["distance_m"].fillna(method="ffill", inplace=True)
+    df["elev"].fillna(method="ffill", inplace=True)
+
+    # Gradient
     df["gradient"] = 0.0
     for i in range(1, len(df)):
         dh = df["elev"].iloc[i] - df["elev"].iloc[i - 1]
         dx = df["distance_m"].iloc[i] - df["distance_m"].iloc[i - 1]
         if dx > 0:
             df.loc[df.index[i], "gradient"] = (dh / dx) * 100.0
-        else:
-            df.loc[df.index[i], "gradient"] = 0.0
 
     return df
+
 
 
 # ---------------------------------------------------------
