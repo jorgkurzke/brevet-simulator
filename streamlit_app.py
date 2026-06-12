@@ -27,6 +27,9 @@ AIR = 1.226
 # GPX PARSER (cached)
 # -----------------------------------------------------
 @st.cache_data
+# -----------------------------------------------------
+# GPX PARSER (ohne Cache)
+# -----------------------------------------------------
 def parse_gpx(file):
     gpx = gpxpy.parse(file)
 
@@ -59,14 +62,11 @@ def parse_gpx(file):
         "distance_m": pd.to_numeric(dists, errors="coerce").ffill().fillna(0.0)
     })
 
-    grad = np.zeros(len(df))
     dh = df["elev"].diff().fillna(0)
     dx = df["distance_m"].diff().fillna(1)
-    grad = (dh / dx) * 100
-    df["gradient"] = grad
+    df["gradient"] = (dh / dx) * 100
 
     return df
-
 
 # -----------------------------------------------------
 # ACP TIMES
