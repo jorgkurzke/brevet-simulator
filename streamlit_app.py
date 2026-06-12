@@ -254,7 +254,15 @@ def compute_speed(gradient: float) -> float:
     #    - Physik darf Zielgeschwindigkeit NICHT unterschreiten
     #    - Physik darf Zielgeschwindigkeit NICHT überschreiten
     #    - Abfahrtslimit bleibt bestehen
-    v_final = max(v_phys, v_target)
+    # Physik bestimmt die Geschwindigkeit
+    v_final = v_phys
+    
+    # Zielgeschwindigkeit ist nur ein Minimum
+    v_final = max(v_final, v_target * 0.7)
+    
+    # Abfahrtslimit bleibt
+    v_final = min(v_final, max_downhill_speed)
+
     v_final = min(v_final, max_downhill_speed)
 
     return v_final
