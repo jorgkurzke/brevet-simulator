@@ -227,18 +227,17 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
         rows.append({
             "Typ": p["type"],
             "Name": p["name"],
-            "KM": km,
-            "KM Abschnitt": seg_km,
-            "HM Abschnitt": seg_hm,
-            "HM gesamt": elev - df["elev"].iloc[0],
-            "Zeit Abschnitt": dt.timedelta(seconds=int(seg_t)),
-            "Zeit gesamt": dt.timedelta(seconds=int(cum_t)),
-            "Ø Abschnitt": (seg_km / (seg_t / 3600)) if seg_t > 0 else 0,
-            "Ø gesamt": (km / (cum_t / 3600)) if cum_t > 0 else 0,
-            "Pause (min)": p["pause"],
-            "ACP Open": df_acp.loc[idx, "open_s"],
-            "ACP Close": df_acp.loc[idx, "close_s"]
+            "KM": int(round(km)),
+            "KM Abschnitt": int(round(seg_km)),
+            "HM Abschnitt": int(round(seg_hm)),
+            "HM gesamt": int(round(elev - df["elev"].iloc[0])),
+            "Zeit Abschnitt": str(dt.timedelta(seconds=int(seg_t)))[:-3],  # HH:MM
+            "Zeit gesamt": str(dt.timedelta(seconds=int(cum_t)))[:-3],     # HH:MM
+            "Ø Abschnitt": int(round((seg_km / (seg_t / 3600)) if seg_t > 0 else 0)),
+            "Ø gesamt": int(round((km / (cum_t / 3600)) if cum_t > 0 else 0)),
+            "Pause (min)": p["pause"]
         })
+
 
         last_km = km
         last_time = cum_t
@@ -395,6 +394,8 @@ spd_vs_up = st.sidebar.number_input("Sehr steil", 3.0, 20.0, 10.0)
 # SIDEBAR – Leistung
 # -----------------------------------------------------
 st.sidebar.header("Leistung")
+# FTP
+ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 250)
 w_flat = st.sidebar.number_input("Watt flach", 80, 400, 200)
 w_up = st.sidebar.number_input("Watt bergauf", 80, 450, 230)
 w_down = st.sidebar.number_input("Watt bergab", 0, 400, 150)
