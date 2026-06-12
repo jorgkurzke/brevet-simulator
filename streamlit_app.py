@@ -133,102 +133,6 @@ def compute_gradient(df):
     return grad
 
 
-
-def compute_speed(df, params):
-    g = df["gradient"].values / 100.0  # Steigung in Dezimalform
-
-    # -----------------------------------------
-    # 1) Zielgeschwindigkeit aus Sidebar
-    # -----------------------------------------
-    v_target = np.select(
-    [
-        g < -0.03,
-        g < -0.01,
-        g < 0.01,
-        g < 0.03,
-        g < 0.06,
-        g < 0.10
-    ],
-    [
-        params["spd_down"],
-        params["spd_ldown"],
-        params["spd_flat"],
-        params["spd_lup"],
-        params["spd_mup"],
-        params["spd_sup"],
-    ],
-    default=params["spd_vs_up"]
-)
-
-
-    # -----------------------------------------
-    # 2) FTP-basierte Leistung
-    # -----------------------------------------
-    P_flat = params["ftp"] * 0.75
-    P_up   = params["ftp"] * 0.90
-    P_down = params["ftp"] * 0.50
-
-    P = np.select(
-        [g < -0.01, g <= 0.01],
-        [P_down, P_flat],
-        default=P_up
-    )
-
-    # -----------------------------------------
-    # 3) Physikalische Kräfte
-    # -----------------------------------------
-    w = wind_component(params["wind"], params["wind_ang"])
-    v_air = lambda v: (v / 3.6) + w
-
-    F_roll = params["weight"] * G * params["crr"]
-    F_grav = params["weight"] * G * g
-    A = 0.5 * AIR * params["cda"]
-
-    v_phys = np.zeros(len(df))
-
-    # -----------------------------------------
-    # 4) Physikgeschwindigkeit numerisch lösen
-    # -----------------------------------------
-    for i in range(len(df)):
-        def f(v_ms):
-            return v_ms * (F_roll + F_grav[i] + A * v_air(v_ms*3.6)**2) - P[i]
-
-        v_ms = 6.0  # Startwert
-        for _ in range(12):
-            dv = 0.1
-            f1 = f(v_ms)
-            f2 = f(v_ms + dv)
-            slope = (f2 - f1) / dv
-            if abs(slope) < 1e-6:
-                break
-            v_ms = v_ms - f1 / slope
-            v_ms = max(v_ms, 0.1)
-
-        v_phys[i] = v_ms * 3.6
-
-    # -----------------------------------------
-    # 5) Hybrid-Regel
-    # -----------------------------------------
-    # Zieltempo dominiert leicht (Faktor 0.85)
-    v_final = np.maximum(v_phys, v_target * hybrid_factor)
-
-    # Limits
-    v_final = np.maximum(v_final, params["min_spd"])
-    v_final = np.minimum(v_final, params["max_down"])
-
-    return v_final
-
-
-# -----------------------------------------------------
-# TIME PROFILE
-# -----------------------------------------------------
-# -----------------------------------------------------
-# DISTANZ BERECHNEN (Meter)
-# -----------------------------------------------------
-# -----------------------------------------------------
-# DISTANZ BERECHNEN (Meter)
-# -----------------------------------------------------
-
 # -----------------------------------------------------
 # HAVERSINE (Meter)
 # -----------------------------------------------------
@@ -252,6 +156,69 @@ def compute_distance(df):
         d = haversine(lat1, lon1, lat2, lon2)
         dist.append(dist[-1] + d)
     return np.array(dist)
+# -----------------------------------------------------
+# GESCHWINDIGKEIT BERECHNEN (Hybrid: Physik + Zieltempo)
+# -----------------------------------------------------
+def compute_speed(df, params):
+
+    weight = params["weight"]
+    cda = params["cda"]
+    crr = params["crr"]
+    wind = params["wind"]
+    wind_ang = params["wind_ang"]
+    max_down = params["max_down"]
+    min_spd = params["min_spd"]
+
+    # Zielgeschwindigkeiten
+    spd_down  = params["spd_down"]
+    spd_ldown = params["spd_ldown"]
+    spd_flat  = params["spd_flat"]
+    spd_lup   = params["spd_lup"]
+    spd_mup   = params["spd_mup"]
+    spd_sup   = params["spd_sup"]
+    spd_vs_up = params["spd_vs_up"]
+
+    hybrid = params["hybrid_factor"]
+
+    g = df["gradient"].values / 100.0  # z.B. 0.05 = 5%
+
+    # Zieltempo nach Steigung
+    v_target = np.select(
+        [
+            g < -0.03,
+            g < -0.01,
+            g < 0.01,
+            g < 0.03,
+            g < 0.06,
+            g < 0.10
+        ],
+        [
+            spd_down,
+            spd_ldown,
+            spd_flat,
+            spd_lup,
+            spd_mup,
+            spd_sup,
+        ],
+        default=spd_vs_up
+    )
+
+    # Physikalische Geschwindigkeit (vereinfachtes Modell)
+    v_phys = np.zeros(len(df))
+    for i in range(len(df)):
+        slope = g[i]
+        if slope < -0.01:
+            v = max_down
+        elif slope < 0.01:
+            v = spd_flat
+        else:
+            v = max(min_spd, spd_flat - slope * 200)
+        v_phys[i] = v
+
+    # Hybrid
+    v_final = np.maximum(v_phys, v_target * hybrid)
+
+    return v_final
 
     
 def add_time_profile(df, params):
