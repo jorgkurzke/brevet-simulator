@@ -376,6 +376,48 @@ def acp_open_close(dist_km):
 # ---------------------------------------------------------
 # ZEITPROFIL MIT STABILEN ZEITEN & km-0-FIX
 # ---------------------------------------------------------
+def compute_acp_times(df):
+    """
+    Berechnet ACP-Öffnungs- und Schließzeiten für alle Kontrollpunkte.
+    Erwartet: df enthält Spalte 'distance_m' und 'cum_seconds'
+    """
+    # ACP-Geschwindigkeiten (km/h)
+    max_speeds = [
+        (200, 34),
+        (400, 32),
+        (600, 30),
+        (1000, 28),
+        (1300, 26)
+    ]
+
+    min_speeds = [
+        (200, 15),
+        (400, 15),
+        (600, 15),
+        (1000, 11.428),
+        (1300, 13.333)
+    ]
+
+    def acp_time(km, table):
+        remaining = km
+        total_hours = 0.0
+        for limit, speed in table:
+            if remaining <= 0:
+                break
+            segment = min(remaining, limit)
+            total_hours += segment / speed
+            remaining -= segment
+        return total_hours * 3600  # Sekunden
+
+    acp = []
+    for i, row in df.iterrows():
+        km = row["distance_m"] / 1000.0
+        open_t = acp_time(km, max_speeds)
+        close_t = acp_time(km, min_speeds)
+        acp.append({"km": km, "open": open_t, "close": close_t})
+
+    return pd.DataFrame(acp)
+
 def add_time_profile(df):
     # Geschwindigkeiten vektorisieren
     speeds = compute_speed_vectorized(df["gradient"].values)  # km/h
