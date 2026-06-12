@@ -1,228 +1,5 @@
-import math
-import io
-from datetime import datetime, timedelta
-
-import gpxpy
-import gpxpy.gpx
-import numpy as np
-import pandas as pd
-import streamlit as st
-import folium
-from streamlit_folium import st_folium
-from fpdf import FPDF
-
-
 # ---------------------------------------------------------
-# APP CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="Brevet Simulator B.6", layout="wide")
-st.title("🚴 Brevet Simulator B.6 – Physik, Wind, FTP, Pausen & Kontrollen")
-
-
-# ---------------------------------------------------------
-# SIDEBAR – BREVET & SIMULATION
-# ---------------------------------------------------------
-st.sidebar.markdown("## ⚡ Schnellzugriff")
-st.sidebar.markdown("- **FTP** beeinflusst Segmentleistung")
-st.sidebar.markdown("- **Wind** wirkt physikalisch")
-st.sidebar.markdown("- **Pausen** beim Erreichen addiert")
-st.sidebar.markdown("---")
-
-if "start_date" not in st.session_state:
-    st.session_state["start_date"] = datetime.now().date()
-
-if "start_time" not in st.session_state:
-    st.session_state["start_time"] = datetime.now().time()
-
-st.sidebar.subheader("Brevet Daten")
-start_date = st.sidebar.date_input("Startdatum", st.session_state["start_date"])
-start_time = st.sidebar.time_input("Startzeit", st.session_state["start_time"])
-st.session_state["start_date"] = start_date
-st.session_state["start_time"] = start_time
-start_datetime = datetime.combine(
-    st.session_state["start_date"],
-    st.session_state["start_time"]
-)
-
-st.sidebar.header("⚙️ Simulationseinstellungen")
-
-ftp = st.sidebar.number_input("FTP [W]", min_value=100, max_value=400, value=220, step=10)
-
-st.sidebar.subheader("Leistungsprofile (Segmentleistung)")
-power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
-power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=220)
-power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=140)
-
-min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
-max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
-
-st.sidebar.header("🎯 Zielgeschwindigkeiten pro Steigung (Basis)")
-target_speed_down = st.sidebar.number_input("Abfahrt (< -3%) [km/h]", 20.0, 80.0, 40.0, 1.0)
-target_speed_light_down = st.sidebar.number_input("Leicht bergab (-3 bis -1%) [km/h]", 20.0, 60.0, 32.0, 1.0)
-target_speed_flat = st.sidebar.number_input("Flach (-1 bis +1%) [km/h]", 15.0, 40.0, 28.0, 1.0)
-target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1 bis 3%) [km/h]", 10.0, 35.0, 24.0, 1.0)
-target_speed_med_up = st.sidebar.number_input("Mittel bergauf (3 bis 6%) [km/h]", 8.0, 30.0, 20.0, 1.0)
-target_speed_steep_up = st.sidebar.number_input("Steil bergauf (6 bis 10%) [km/h]", 6.0, 25.0, 16.0, 1.0)
-target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (> 10%) [km/h]", 5.0, 20.0, 12.0, 1.0)
-
-st.sidebar.subheader("Rad Daten")
-weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", 50, 120, 75)
-weight_bike = st.sidebar.number_input("Radgewicht (kg)", 6, 20, 10)
-weight_total = weight_rider + weight_bike
-st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
-
-st.sidebar.subheader("Physikalisches Modell")
-c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
-c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
-air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
-
-st.sidebar.subheader("Wetter Modell")
-wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
-wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
-
-debug_flag = st.sidebar.checkbox("Debug-Panel anzeigen", False)
-# ---------------------------------------------------------
-# GPX UPLOAD & PARSE
-# ---------------------------------------------------------
-st.header("📁 GPX-Datei hochladen")
-uploaded_file = st.file_uploader("GPX-Datei wählen", type=["gpx"])
-
-def parse_gpx(file) -> pd.DataFrame:
-    gpx = gpxpy.parse(file)
-    points = []
-    for track in gpx.tracks:
-        for segment in track.segments:
-            for p in segment.points:
-                points.append((p.latitude, p.longitude, p.elevation, p.time))
-
-    df = pd.DataFrame(points, columns=["lat", "lon", "elev", "time"])
-
-    df["distance_m"] = 0.0
-    df["gradient"] = 0.0
-
-    for i in range(1, len(df)):
-        lat1, lon1, ele1 = df.loc[i - 1, ["lat", "lon", "elev"]]
-        lat2, lon2, ele2 = df.loc[i, ["lat", "lon", "elev"]]
-
-        R = 6371000
-        phi1 = math.radians(lat1)
-        phi2 = math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlambda = math.radians(lon2 - lon1)
-
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        d_horiz = R * c
-
-        d_vert = ele2 - ele1
-        dist = math.sqrt(d_horiz ** 2 + d_vert ** 2)
-
-        df.at[i, "distance_m"] = df.at[i - 1, "distance_m"] + dist
-
-        if d_horiz > 0:
-            df.at[i, "gradient"] = (d_vert / d_horiz) * 100.0
-        else:
-            df.at[i, "gradient"] = 0.0
-
-    return df
-
-
-# ---------------------------------------------------------
-# PHYSIK-HILFSFUNKTIONEN
-# ---------------------------------------------------------
-g_const = 9.81
-
-def segment_power(gradient: float) -> float:
-    if gradient < -1.0:
-        base = power_down
-    elif gradient > 2.0:
-        base = power_climb
-    else:
-        base = power_flat
-    return base * (ftp / 220.0) ** 0.3
-
-def base_speed_from_gradient(gradient: float) -> float:
-    g = gradient
-    if g < -3:
-        return target_speed_down
-    elif -3 <= g < -1:
-        return target_speed_light_down
-    elif -1 <= g <= 1:
-        return target_speed_flat
-    elif 1 < g <= 3:
-        return target_speed_light_up
-    elif 3 < g <= 6:
-        return target_speed_med_up
-    elif 6 < g <= 10:
-        return target_speed_steep_up
-    else:
-        return target_speed_very_steep_up
-
-def wind_component_ms(wind_speed_kmh: float, wind_angle_deg: float) -> float:
-    w = wind_speed_kmh / 3.6
-    angle = math.radians(wind_angle_deg)
-    return w * math.cos(angle)
-# ---------------------------------------------------------
-# REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
-# ---------------------------------------------------------
-def compute_speed(gradient: float) -> float:
-    base = base_speed_from_gradient(gradient)
-    P = segment_power(gradient)
-    w_eff = wind_component_ms(wind_speed, wind_angle)
-
-    # Startwert
-    v = max(base / 3.6, min_speed / 3.6)
-
-    # Iterative Lösung: P = F_total * v
-    for _ in range(12):
-        v_rel = v + w_eff
-
-        F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
-        F_roll = weight_total * g_const * c_rr
-        F_grav = weight_total * g_const * (gradient / 100.0)
-
-        F_total = F_aero + F_roll + F_grav
-
-        if F_total <= 0:
-            break
-
-        v = P / F_total
-
-    v_kmh = v * 3.6
-
-    # Grenzen
-    v_kmh = max(v_kmh, min_speed)
-    if gradient < 0:
-        v_kmh = min(v_kmh, max_downhill_speed)
-
-    return v_kmh
-
-
-# ---------------------------------------------------------
-# DEBUG-PANEL (F_aero, F_roll, F_grav)
-# ---------------------------------------------------------
-def build_debug(df: pd.DataFrame) -> pd.DataFrame:
-    w_eff = wind_component_ms(wind_speed, wind_angle)
-    v_ms = df["speed_kmh"] / 3.6
-    v_rel = v_ms + w_eff
-
-    F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
-    F_roll = weight_total * g_const * c_rr
-    F_grav = weight_total * g_const * (df["gradient"] / 100.0)
-    F_total = F_aero + F_roll + F_grav
-
-    dbg = pd.DataFrame({
-        "distance_km": df["distance_m"] / 1000.0,
-        "speed_kmh": df["speed_kmh"],
-        "F_aero": F_aero,
-        "F_roll": F_roll,
-        "F_grav": F_grav,
-        "F_total": F_total,
-    })
-
-    return dbg
-# ---------------------------------------------------------
-# PAUSEN & KONTROLLPUNKTE
+# PAUSEN & KONTROLLPUNKTE (mit km-0-Fix)
 # ---------------------------------------------------------
 st.sidebar.header("⏱ Pausen & Kontrollpunkte")
 
@@ -238,7 +15,10 @@ pause_dist = st.sidebar.number_input("Pausenpunkt bei km", min_value=0.0, value=
 pause_minutes = st.sidebar.number_input("Pausendauer (min)", min_value=0, max_value=180, value=0)
 
 if st.sidebar.button("Pause hinzufügen"):
-    st.session_state["pauses"].append({"km": pause_dist, "pause_min": pause_minutes})
+    if pause_dist == 0:
+        st.sidebar.warning("❗ Der Startpunkt (km 0) kann keine Pause haben.")
+    else:
+        st.session_state["pauses"].append({"km": pause_dist, "pause_min": pause_minutes})
 
 # --- Kontrollpunkt hinzufügen ---
 st.sidebar.subheader("Kontrollpunkt hinzufügen")
@@ -246,7 +26,10 @@ control_dist = st.sidebar.number_input("Kontrollpunkt bei km", min_value=0.0, va
 control_pause = st.sidebar.number_input("Pause am Kontrollpunkt (min)", min_value=0, max_value=180, value=0)
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
-    st.session_state["controls"].append({"km": control_dist, "pause_min": control_pause})
+    if control_dist == 0:
+        st.sidebar.warning("❗ Der Startpunkt (km 0) kann kein Kontrollpunkt sein.")
+    else:
+        st.session_state["controls"].append({"km": control_dist, "pause_min": control_pause})
 
 # Anzeigen
 st.sidebar.write("### Pausenpunkte")
@@ -254,23 +37,8 @@ st.sidebar.write(st.session_state["pauses"])
 
 st.sidebar.write("### Kontrollpunkte")
 st.sidebar.write(st.session_state["controls"])
-
-
 # ---------------------------------------------------------
-# ACP ÖFFNUNGS- UND SCHLIEßZEITEN
-# ---------------------------------------------------------
-def acp_open_close(dist_km):
-    vmax = 34.0   # ACP Max-Speed
-    vmin = 15.0   # ACP Min-Speed
-
-    open_h = dist_km / vmax
-    close_h = dist_km / vmin
-
-    return timedelta(hours=open_h), timedelta(hours=close_h)
-
-
-# ---------------------------------------------------------
-# ZEITPROFIL MIT PAUSEN & ACP
+# ZEITPROFIL MIT PAUSEN, KONTROLLEN & km-0-FIX
 # ---------------------------------------------------------
 def add_time_profile(df: pd.DataFrame):
     times = [0.0]
@@ -279,9 +47,14 @@ def add_time_profile(df: pd.DataFrame):
     pauses = st.session_state["pauses"]
     controls = st.session_state["controls"]
 
+    # km-0-Fix: Alle ungültigen Punkte entfernen
+    pauses = [p for p in pauses if p["km"] > 0]
+    controls = [c for c in controls if c["km"] > 0]
+
     for i in range(1, len(df)):
         dist = df.distance_m.iloc[i] - df.distance_m.iloc[i - 1]
 
+        # Schutz: GPX-Duplikate oder Null-Distanz
         if dist <= 0:
             times.append(times[-1])
             speeds.append(speeds[-1])
@@ -289,31 +62,34 @@ def add_time_profile(df: pd.DataFrame):
 
         g = df.gradient.iloc[i]
         v_kmh = compute_speed(g)
-        v_ms = v_kmh / 3.6
+        v_ms = max(v_kmh / 3.6, 0.1)
 
         dt = dist / v_ms
         new_time = times[-1] + dt
 
         km_now = df.distance_m.iloc[i] / 1000.0
 
-        # Pausenpunkte
+        # --- Pausenpunkte ---
         for p in pauses:
             if abs(km_now - p["km"]) < 0.05:
                 new_time += p["pause_min"] * 60
 
-        # Kontrollpunkte
+        # --- Kontrollpunkte ---
         for c in controls:
             if abs(km_now - c["km"]) < 0.05:
                 new_time += c["pause_min"] * 60
+
+        # Schutz: Negative Zeiten verhindern
+        new_time = max(new_time, times[-1])
 
         times.append(new_time)
         speeds.append(v_kmh)
 
     df["speed_kmh"] = speeds
     df["time_s"] = times
-    df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
+    df["sim_time"] = [start_datetime + timedelta(seconds=float(t)) for t in times]
 
-    # ACP Zeiten für Kontrollpunkte
+    # ACP Zeiten
     acp_list = []
     for c in controls:
         open_t, close_t = acp_open_close(c["km"])
@@ -326,10 +102,8 @@ def add_time_profile(df: pd.DataFrame):
     df_acp = pd.DataFrame(acp_list)
 
     return df, df_acp
-
-
 # ---------------------------------------------------------
-# ZUSAMMENFASSUNGSTABELLE
+# ZUSAMMENFASSUNGSTABELLE (mit km-0-Fix)
 # ---------------------------------------------------------
 def build_summary(df: pd.DataFrame, df_acp: pd.DataFrame):
     summary_rows = []
@@ -353,10 +127,12 @@ def build_summary(df: pd.DataFrame, df_acp: pd.DataFrame):
     all_points = []
 
     for p in st.session_state["pauses"]:
-        all_points.append({"km": p["km"], "pause": p["pause_min"], "type": "Pause"})
+        if p["km"] > 0:   # km-0-Fix
+            all_points.append({"km": p["km"], "pause": p["pause_min"], "type": "Pause"})
 
     for c in st.session_state["controls"]:
-        all_points.append({"km": c["km"], "pause": c["pause_min"], "type": "Kontrolle"})
+        if c["km"] > 0:   # km-0-Fix
+            all_points.append({"km": c["km"], "pause": c["pause_min"], "type": "Kontrolle"})
 
     all_points = sorted(all_points, key=lambda x: x["km"])
 
@@ -407,57 +183,54 @@ def build_summary(df: pd.DataFrame, df_acp: pd.DataFrame):
 
     return pd.DataFrame(summary_rows)
 # ---------------------------------------------------------
-# KARTE MIT GROßEN MARKERN
+# INTERAKTIVE KARTENANIMATION (Playhead)
 # ---------------------------------------------------------
-def show_map(df: pd.DataFrame):
-    m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=10)
+def animate_map(df: pd.DataFrame):
+    st.subheader("🎬 Kartenanimation")
+
+    # Maximale Distanz in km
+    max_km = df["distance_m"].iloc[-1] / 1000.0
+
+    # Slider für Animation
+    pos_km = st.slider(
+        "Position auf der Strecke [km]",
+        0.0,
+        float(max_km),
+        0.0,
+        0.5
+    )
+
+    # Nächsten GPX-Punkt finden
+    row = df.iloc[(df["distance_m"]/1000.0 - pos_km).abs().argmin()]
+
+    # Karte erzeugen
+    m = folium.Map(location=[row.lat, row.lon], zoom_start=12)
 
     # GPX-Linie
     folium.PolyLine(
         df[["lat", "lon"]].values,
         color="red",
         weight=4,
-        opacity=0.8
+        opacity=0.6
     ).add_to(m)
 
-    # Kontrollpunkte
-    for c in st.session_state["controls"]:
-        row = df.iloc[(df.distance_m / 1000.0 - c["km"]).abs().argmin()]
-        folium.CircleMarker(
-            location=[row.lat, row.lon],
-            radius=12,
-            color="blue",
-            fill=True,
-            fill_color="blue",
-            tooltip=f"Kontrollpunkt {c['km']} km – Pause {c['pause_min']} min"
-        ).add_to(m)
+    # Aktuelle Position
+    folium.CircleMarker(
+        location=[row.lat, row.lon],
+        radius=10,
+        color="green",
+        fill=True,
+        fill_color="green",
+        tooltip=(
+            f"km {pos_km:.1f} | "
+            f"v={row['speed_kmh_smooth']:.1f} km/h | "
+            f"{row['sim_time']}"
+        )
+    ).add_to(m)
 
-    # Pausenpunkte
-    for p in st.session_state["pauses"]:
-        row = df.iloc[(df.distance_m / 1000.0 - p["km"]).abs().argmin()]
-        folium.CircleMarker(
-            location=[row.lat, row.lon],
-            radius=12,
-            color="yellow",
-            fill=True,
-            fill_color="yellow",
-            tooltip=f"Pause {p['pause_min']} min"
-        ).add_to(m)
-
-    return m
-
-
+    st_folium(m, width=900, height=500)
 # ---------------------------------------------------------
-# GESCHWINDIGKEITSKURVE GLÄTTEN
-# ---------------------------------------------------------
-def smooth_speed(df, window=9):
-    df["speed_kmh_smooth"] = df["speed_kmh"].rolling(window, center=True).mean()
-    df["speed_kmh_smooth"].fillna(df["speed_kmh"], inplace=True)
-    return df
-
-
-# ---------------------------------------------------------
-# MAIN LOGIC
+# MAIN LOGIC – B.7 (mit km-0-Fix & Animation)
 # ---------------------------------------------------------
 if uploaded_file is None:
     st.info("Bitte eine GPX-Datei hochladen, um die Simulation zu starten.")
@@ -471,7 +244,7 @@ else:
     summary_df = build_summary(df, df_acp)
 
     # Charts
-    st.subheader("Streckenprofil & Simulation")
+    st.subheader("📈 Streckenprofil & Simulation")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -484,16 +257,19 @@ else:
     st.subheader("🗺 Karte")
     st_folium(show_map(df), width=900, height=500)
 
+    # Animation
+    animate_map(df)
+
     # Zeitprofil
-    st.subheader("Zeitprofil")
+    st.subheader("⏱ Zeitprofil")
     st.write(df[["distance_m", "elev", "gradient", "speed_kmh", "speed_kmh_smooth", "sim_time"]])
 
     # ACP Zeiten
-    st.subheader("ACP Kontrollzeiten")
+    st.subheader("📘 ACP Kontrollzeiten")
     st.write(df_acp)
 
     # Zusammenfassung
-    st.subheader("📘 Zusammenfassung")
+    st.subheader("📒 Zusammenfassung")
     st.write(summary_df)
 
     # Debug Panel
@@ -518,7 +294,7 @@ else:
     st.download_button(
         label="📥 Excel exportieren",
         data=excel_buffer.getvalue(),
-        file_name="brevet_simulation.xlsx",
+        file_name="brevet_simulation_b7.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
@@ -543,7 +319,6 @@ else:
     st.download_button(
         label="📄 PDF exportieren",
         data=pdf_buffer,
-        file_name="brevet_simulation.pdf",
+        file_name="brevet_simulation_b7.pdf",
         mime="application/pdf"
     )
-
