@@ -1,3 +1,227 @@
+import math
+import io
+from datetime import datetime, timedelta
+
+import gpxpy
+import gpxpy.gpx
+import numpy as np
+import pandas as pd
+import streamlit as st
+import folium
+from streamlit_folium import st_folium
+from fpdf import FPDF
+
+
+# ---------------------------------------------------------
+# APP CONFIG
+# ---------------------------------------------------------
+st.set_page_config(page_title="Brevet Simulator B.6", layout="wide")
+st.title("🚴 Brevet Simulator B.6 – Physik, Wind, FTP, Pausen & Kontrollen")
+
+
+# ---------------------------------------------------------
+# SIDEBAR – BREVET & SIMULATION
+# ---------------------------------------------------------
+st.sidebar.markdown("## ⚡ Schnellzugriff")
+st.sidebar.markdown("- **FTP** beeinflusst Segmentleistung")
+st.sidebar.markdown("- **Wind** wirkt physikalisch")
+st.sidebar.markdown("- **Pausen** beim Erreichen addiert")
+st.sidebar.markdown("---")
+
+if "start_date" not in st.session_state:
+    st.session_state["start_date"] = datetime.now().date()
+
+if "start_time" not in st.session_state:
+    st.session_state["start_time"] = datetime.now().time()
+
+st.sidebar.subheader("Brevet Daten")
+start_date = st.sidebar.date_input("Startdatum", st.session_state["start_date"])
+start_time = st.sidebar.time_input("Startzeit", st.session_state["start_time"])
+st.session_state["start_date"] = start_date
+st.session_state["start_time"] = start_time
+start_datetime = datetime.combine(
+    st.session_state["start_date"],
+    st.session_state["start_time"]
+)
+
+st.sidebar.header("⚙️ Simulationseinstellungen")
+
+ftp = st.sidebar.number_input("FTP [W]", min_value=100, max_value=400, value=220, step=10)
+
+st.sidebar.subheader("Leistungsprofile (Segmentleistung)")
+power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
+power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=220)
+power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=140)
+
+min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
+max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
+
+st.sidebar.header("🎯 Zielgeschwindigkeiten pro Steigung (Basis)")
+target_speed_down = st.sidebar.number_input("Abfahrt (< -3%) [km/h]", 20.0, 80.0, 40.0, 1.0)
+target_speed_light_down = st.sidebar.number_input("Leicht bergab (-3 bis -1%) [km/h]", 20.0, 60.0, 32.0, 1.0)
+target_speed_flat = st.sidebar.number_input("Flach (-1 bis +1%) [km/h]", 15.0, 40.0, 28.0, 1.0)
+target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1 bis 3%) [km/h]", 10.0, 35.0, 24.0, 1.0)
+target_speed_med_up = st.sidebar.number_input("Mittel bergauf (3 bis 6%) [km/h]", 8.0, 30.0, 20.0, 1.0)
+target_speed_steep_up = st.sidebar.number_input("Steil bergauf (6 bis 10%) [km/h]", 6.0, 25.0, 16.0, 1.0)
+target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (> 10%) [km/h]", 5.0, 20.0, 12.0, 1.0)
+
+st.sidebar.subheader("Rad Daten")
+weight_rider = st.sidebar.number_input("Fahrergewicht (kg)", 50, 120, 75)
+weight_bike = st.sidebar.number_input("Radgewicht (kg)", 6, 20, 10)
+weight_total = weight_rider + weight_bike
+st.sidebar.write(f"**Systemgewicht:** {weight_total:.1f} kg")
+
+st.sidebar.subheader("Physikalisches Modell")
+c_dA = st.sidebar.number_input("CdA (m²)", 0.15, 0.40, 0.28, 0.01)
+c_rr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004, 0.001)
+air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
+
+st.sidebar.subheader("Wetter Modell")
+wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
+wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
+
+debug_flag = st.sidebar.checkbox("Debug-Panel anzeigen", False)
+# ---------------------------------------------------------
+# GPX UPLOAD & PARSE
+# ---------------------------------------------------------
+st.header("📁 GPX-Datei hochladen")
+uploaded_file = st.file_uploader("GPX-Datei wählen", type=["gpx"])
+
+def parse_gpx(file) -> pd.DataFrame:
+    gpx = gpxpy.parse(file)
+    points = []
+    for track in gpx.tracks:
+        for segment in track.segments:
+            for p in segment.points:
+                points.append((p.latitude, p.longitude, p.elevation, p.time))
+
+    df = pd.DataFrame(points, columns=["lat", "lon", "elev", "time"])
+
+    df["distance_m"] = 0.0
+    df["gradient"] = 0.0
+
+    for i in range(1, len(df)):
+        lat1, lon1, ele1 = df.loc[i - 1, ["lat", "lon", "elev"]]
+        lat2, lon2, ele2 = df.loc[i, ["lat", "lon", "elev"]]
+
+        R = 6371000
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlambda = math.radians(lon2 - lon1)
+
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        d_horiz = R * c
+
+        d_vert = ele2 - ele1
+        dist = math.sqrt(d_horiz ** 2 + d_vert ** 2)
+
+        df.at[i, "distance_m"] = df.at[i - 1, "distance_m"] + dist
+
+        if d_horiz > 0:
+            df.at[i, "gradient"] = (d_vert / d_horiz) * 100.0
+        else:
+            df.at[i, "gradient"] = 0.0
+
+    return df
+
+
+# ---------------------------------------------------------
+# PHYSIK-HILFSFUNKTIONEN
+# ---------------------------------------------------------
+g_const = 9.81
+
+def segment_power(gradient: float) -> float:
+    if gradient < -1.0:
+        base = power_down
+    elif gradient > 2.0:
+        base = power_climb
+    else:
+        base = power_flat
+    return base * (ftp / 220.0) ** 0.3
+
+def base_speed_from_gradient(gradient: float) -> float:
+    g = gradient
+    if g < -3:
+        return target_speed_down
+    elif -3 <= g < -1:
+        return target_speed_light_down
+    elif -1 <= g <= 1:
+        return target_speed_flat
+    elif 1 < g <= 3:
+        return target_speed_light_up
+    elif 3 < g <= 6:
+        return target_speed_med_up
+    elif 6 < g <= 10:
+        return target_speed_steep_up
+    else:
+        return target_speed_very_steep_up
+
+def wind_component_ms(wind_speed_kmh: float, wind_angle_deg: float) -> float:
+    w = wind_speed_kmh / 3.6
+    angle = math.radians(wind_angle_deg)
+    return w * math.cos(angle)
+# ---------------------------------------------------------
+# REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
+# ---------------------------------------------------------
+def compute_speed(gradient: float) -> float:
+    base = base_speed_from_gradient(gradient)
+    P = segment_power(gradient)
+    w_eff = wind_component_ms(wind_speed, wind_angle)
+
+    # Startwert
+    v = max(base / 3.6, min_speed / 3.6)
+
+    # Iterative Lösung: P = F_total * v
+    for _ in range(12):
+        v_rel = v + w_eff
+
+        F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
+        F_roll = weight_total * g_const * c_rr
+        F_grav = weight_total * g_const * (gradient / 100.0)
+
+        F_total = F_aero + F_roll + F_grav
+
+        if F_total <= 0:
+            break
+
+        v = P / F_total
+
+    v_kmh = v * 3.6
+
+    # Grenzen
+    v_kmh = max(v_kmh, min_speed)
+    if gradient < 0:
+        v_kmh = min(v_kmh, max_downhill_speed)
+
+    return v_kmh
+
+
+# ---------------------------------------------------------
+# DEBUG-PANEL (F_aero, F_roll, F_grav)
+# ---------------------------------------------------------
+def build_debug(df: pd.DataFrame) -> pd.DataFrame:
+    w_eff = wind_component_ms(wind_speed, wind_angle)
+    v_ms = df["speed_kmh"] / 3.6
+    v_rel = v_ms + w_eff
+
+    F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
+    F_roll = weight_total * g_const * c_rr
+    F_grav = weight_total * g_const * (df["gradient"] / 100.0)
+    F_total = F_aero + F_roll + F_grav
+
+    dbg = pd.DataFrame({
+        "distance_km": df["distance_m"] / 1000.0,
+        "speed_kmh": df["speed_kmh"],
+        "F_aero": F_aero,
+        "F_roll": F_roll,
+        "F_grav": F_grav,
+        "F_total": F_total,
+    })
+
+    return dbg
+
 # ---------------------------------------------------------
 # PAUSEN & KONTROLLPUNKTE (mit km-0-Fix)
 # ---------------------------------------------------------
