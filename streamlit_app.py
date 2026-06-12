@@ -692,11 +692,8 @@ if uploaded_files:
         st.markdown(f"**Gesamtzeit:** {total_hours:02d}:{total_minutes:02d} Std")
 
         all_dfs[file.name] = df
-
 else:
     st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
-
-
 # ---------------------------------------------------------
 # CLOUD‑STABILER RERUN (OHNE experimental_rerun)
 # ---------------------------------------------------------
