@@ -110,9 +110,11 @@ def parse_gpx(file) -> pd.DataFrame:
                 dists.append(total_dist)
                 last_point = point
 
-            # Segmentende → last_point NICHT zurücksetzen!
-            # Sonst gäbe es Distanzsprünge
+            # WICHTIG:
+            # last_point NICHT zurücksetzen!
+            # Sonst entstehen Distanzsprünge zwischen Segmenten
 
+    # DataFrame erzeugen
     df = pd.DataFrame({
         "lat": lats,
         "lon": lons,
@@ -120,14 +122,15 @@ def parse_gpx(file) -> pd.DataFrame:
         "distance_m": dists
     })
 
-    # Fehlende Werte stabilisieren
+    # Typen erzwingen
     df["distance_m"] = df["distance_m"].astype(float)
     df["elev"] = df["elev"].astype(float)
 
+    # Fehlende Werte stabilisieren
     df["distance_m"].fillna(method="ffill", inplace=True)
     df["elev"].fillna(method="ffill", inplace=True)
 
-    # Gradient
+    # Gradient berechnen
     df["gradient"] = 0.0
     for i in range(1, len(df)):
         dh = df["elev"].iloc[i] - df["elev"].iloc[i - 1]
@@ -136,8 +139,6 @@ def parse_gpx(file) -> pd.DataFrame:
             df.loc[df.index[i], "gradient"] = (dh / dx) * 100.0
 
     return df
-
-
 
 # ---------------------------------------------------------
 # PHYSIK-MODELL BASIS
