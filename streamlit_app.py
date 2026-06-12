@@ -88,6 +88,11 @@ def parse_gpx(file) -> pd.DataFrame:
 
     for track in gpx.tracks:
         for segment in track.segments:
+
+            # Segment hat Punkte?
+            if len(segment.points) == 0:
+                continue
+
             for point in segment.points:
 
                 # Koordinaten
@@ -122,26 +127,25 @@ def parse_gpx(file) -> pd.DataFrame:
         "distance_m": dists
     })
 
-    # Typen erzwingen
-    
-    # Elevation robust normalisieren
+    # Typen robust erzwingen
+    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
     df["elev"] = pd.to_numeric(df["elev"], errors="coerce")
-    
-    # Falls ALLE Höhen None sind → setze 0
-    if df["elev"].isna().all():
-        df["elev"] = 0.0
-    
-    df["elev"].fillna(method="ffill", inplace=True)
-    df["elev"].fillna(method="bfill", inplace=True)
-    
     df["distance_m"] = pd.to_numeric(df["distance_m"], errors="coerce")
-    df["distance_m"].fillna(method="ffill", inplace=True)
-    df["distance_m"].fillna(0.0, inplace=True)
 
     # Fehlende Werte stabilisieren
-    df["distance_m"] = df["distance_m"].astype(float)
-    #df["distance_m"].fillna(method="ffill", inplace=True)
-    
+    df["lat"].fillna(method="ffill", inplace=True)
+    df["lon"].fillna(method="ffill", inplace=True)
+
+    # Elevation: falls komplett leer → 0
+    if df["elev"].isna().all():
+        df["elev"] = 0.0
+
+    df["elev"].fillna(method="ffill", inplace=True)
+    df["elev"].fillna(method="bfill", inplace=True)
+
+    df["distance_m"].fillna(method="ffill", inplace=True)
+    df["distance_m"].fillna(0.0, inplace=True)
 
     # Gradient berechnen
     df["gradient"] = 0.0
