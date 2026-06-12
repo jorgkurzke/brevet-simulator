@@ -1,12 +1,4 @@
-# B.7.16 – Brevet Simulator (komplett, sauber, ohne Edge-Müll)
-# Features:
-# - GPX-Parser (robust)
-# - Vektorisiertes Speed-Modell (Hybrid C2)
-# - Zeitprofil + ACP-Zeiten
-# - Folium-Karte mit Höhen-Farbverlauf
-# - Zusammenfassung (Variante B – vollständig)
-# - Export: Excel + PDF (UTF‑8, DejaVuSans.ttf)
-# - Performance: Caching, keine Loops
+# B.7.17 – Brevet Simulator (sauber, ohne Cache, ohne Edge-Müll)
 
 import math
 import datetime as dt
@@ -52,17 +44,27 @@ def parse_gpx(file):
                 last = p
 
     df = pd.DataFrame({
-        "lat": pd.to_numeric(lats, errors="coerce").ffill(),
-        "lon": pd.to_numeric(lons, errors="coerce").ffill(),
-        "elev": pd.to_numeric(elevs, errors="coerce").ffill().bfill(),
-        "distance_m": pd.to_numeric(dists, errors="coerce").ffill().fillna(0.0)
+        "lat": pd.to_numeric(lats, errors="coerce"),
+        "lon": pd.to_numeric(lons, errors="coerce"),
+        "elev": pd.to_numeric(elevs, errors="coerce"),
+        "distance_m": pd.to_numeric(dists, errors="coerce"),
     })
+
+    df["lat"] = df["lat"].ffill()
+    df["lon"] = df["lon"].ffill()
+
+    if df["elev"].isna().all():
+        df["elev"] = 0.0
+    df["elev"] = df["elev"].ffill().bfill()
+
+    df["distance_m"] = df["distance_m"].ffill().fillna(0.0)
 
     dh = df["elev"].diff().fillna(0)
     dx = df["distance_m"].diff().fillna(1)
     df["gradient"] = (dh / dx) * 100
 
     return df
+
 
 # -----------------------------------------------------
 # ACP TIMES
@@ -106,7 +108,6 @@ def wind_component(w, ang):
 def compute_speed(df, params):
     g = df["gradient"].values
 
-    # Zielgeschwindigkeit
     v_t = np.select(
         [
             g < -3,
@@ -127,7 +128,6 @@ def compute_speed(df, params):
         default=params["spd_vs_up"]
     )
 
-    # Leistung
     P = np.select(
         [g < -1, g <= 1],
         [params["w_down"], params["w_flat"]],
@@ -172,10 +172,8 @@ def add_time_profile(df, params):
 # SUMMARY TABLE
 # -----------------------------------------------------
 def build_summary(df, control_points, pause_points, start_dt, df_acp):
-    # Punkte zusammenführen
     pts = []
 
-    # Start
     pts.append({
         "km": 0.0,
         "name": "Start",
@@ -183,7 +181,6 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
         "pause": 0
     })
 
-    # KP + Pausen
     for cp in control_points:
         pts.append({
             "km": cp["km"],
@@ -200,7 +197,6 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
             "pause": pp["pause"]
         })
 
-    # Ziel
     pts.append({
         "km": df["distance_m"].iloc[-1] / 1000,
         "name": "Ziel",
@@ -208,7 +204,6 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
         "pause": 0
     })
 
-    # Sortieren nach km
     pts = sorted(pts, key=lambda x: x["km"])
 
     rows = []
@@ -287,52 +282,47 @@ def export_pdf(df):
 # -----------------------------------------------------
 def color_for_gradient(g):
     if g < -2:
-        return "#00aa00"  # grün
+        return "#00aa00"
     if g < 2:
-        return "#88cc00"  # gelbgrün
+        return "#88cc00"
     if g < 6:
-        return "#ffcc00"  # gelb
+        return "#ffcc00"
     if g < 10:
-        return "#ff8800"  # orange
-    return "#ff0000"      # rot
+        return "#ff8800"
+    return "#ff0000"
 
 
 def build_map(df, control_points, pause_points):
     m = folium.Map(location=[df["lat"].iloc[0], df["lon"].iloc[0]], zoom_start=12)
 
-    # Track segmentweise
-    for i in range(len(df)-1):
+    for i in range(len(df) - 1):
         p1 = (df["lat"].iloc[i], df["lon"].iloc[i])
-        p2 = (df["lat"].iloc[i+1], df["lon"].iloc[i+1])
+        p2 = (df["lat"].iloc[i + 1], df["lon"].iloc[i + 1])
         g = df["gradient"].iloc[i]
         folium.PolyLine([p1, p2], color=color_for_gradient(g), weight=4).add_to(m)
 
-    # Start
     folium.Marker(
         [df["lat"].iloc[0], df["lon"].iloc[0]],
         popup="Start",
         icon=folium.Icon(color="green")
     ).add_to(m)
 
-    # Ziel
     folium.Marker(
         [df["lat"].iloc[-1], df["lon"].iloc[-1]],
         popup="Ziel",
         icon=folium.Icon(color="red")
     ).add_to(m)
 
-    # KP
     for cp in control_points:
-        idx = (df["distance_m"]/1000 - cp["km"]).abs().idxmin()
+        idx = (df["distance_m"] / 1000 - cp["km"]).abs().idxmin()
         folium.Marker(
             [df["lat"].iloc[idx], df["lon"].iloc[idx]],
             popup=f"KP: {cp['name']}",
             icon=folium.Icon(color="blue")
         ).add_to(m)
 
-    # Pausen
     for pp in pause_points:
-        idx = (df["distance_m"]/1000 - pp["km"]).abs().idxmin()
+        idx = (df["distance_m"] / 1000 - pp["km"]).abs().idxmin()
         folium.Marker(
             [df["lat"].iloc[idx], df["lon"].iloc[idx]],
             popup=f"Pause: {pp['name']}",
@@ -346,9 +336,8 @@ def build_map(df, control_points, pause_points):
 # STREAMLIT UI
 # -----------------------------------------------------
 st.set_page_config(page_title="Brevet Simulator", layout="wide")
-st.title("Brevet Simulator B.7.16")
+st.title("Brevet Simulator B.7.17")
 
-# Sidebar
 st.sidebar.header("Fahrer & Rad")
 weight = st.sidebar.number_input("Gesamtgewicht (kg)", 50.0, 150.0, 85.0)
 
@@ -446,6 +435,7 @@ if uploaded:
 
 else:
     st.info("Bitte GPX-Datei hochladen.")
+
 
 
 
