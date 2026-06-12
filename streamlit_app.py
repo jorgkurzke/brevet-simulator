@@ -81,37 +81,6 @@ wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
 wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
 
 debug_flag = st.sidebar.checkbox("Debug-Panel anzeigen", False)
-
-
-# ---------------------------------------------------------
-# PAUSEN & KONTROLLPUNKTE
-# ---------------------------------------------------------
-st.sidebar.header("⏱ Pausen & Kontrollpunkte")
-
-if "pauses" not in st.session_state:
-    st.session_state["pauses"] = []
-
-if "controls" not in st.session_state:
-    st.session_state["controls"] = []
-
-st.sidebar.subheader("Pause hinzufügen")
-pause_dist = st.sidebar.number_input("Pausenpunkt bei km", min_value=0.0, value=0.0, step=1.0)
-pause_minutes = st.sidebar.number_input("Pausendauer (min)", min_value=0, max_value=180, value=0)
-if st.sidebar.button("Pause hinzufügen"):
-    st.session_state["pauses"].append({"km": pause_dist, "pause_min": pause_minutes})
-
-st.sidebar.subheader("Kontrollpunkt hinzufügen")
-control_dist = st.sidebar.number_input("Kontrollpunkt bei km", min_value=0.0, value=0.0, step=1.0)
-control_pause = st.sidebar.number_input("Pause am Kontrollpunkt (min)", min_value=0, max_value=180, value=0)
-if st.sidebar.button("Kontrollpunkt hinzufügen"):
-    st.session_state["controls"].append({"km": control_dist, "pause_min": control_pause})
-
-st.sidebar.write("### Pausenpunkte")
-st.sidebar.write(st.session_state["pauses"])
-st.sidebar.write("### Kontrollpunkte")
-st.sidebar.write(st.session_state["controls"])
-
-
 # ---------------------------------------------------------
 # GPX UPLOAD & PARSE
 # ---------------------------------------------------------
@@ -193,19 +162,6 @@ def wind_component_ms(wind_speed_kmh: float, wind_angle_deg: float) -> float:
     w = wind_speed_kmh / 3.6
     angle = math.radians(wind_angle_deg)
     return w * math.cos(angle)
-
-
-# ---------------------------------------------------------
-# ACP ÖFFNUNGS- UND SCHLIEßZEITEN
-# ---------------------------------------------------------
-def acp_open_close(dist_km):
-    vmax = 34.0
-    vmin = 15.0
-    open_h = dist_km / vmax
-    close_h = dist_km / vmin
-    return timedelta(hours=open_h), timedelta(hours=close_h)
-
-
 # ---------------------------------------------------------
 # REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
 # ---------------------------------------------------------
@@ -214,23 +170,103 @@ def compute_speed(gradient: float) -> float:
     P = segment_power(gradient)
     w_eff = wind_component_ms(wind_speed, wind_angle)
 
+    # Startwert
     v = max(base / 3.6, min_speed / 3.6)
 
+    # Iterative Lösung: P = F_total * v
     for _ in range(12):
         v_rel = v + w_eff
+
         F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
         F_roll = weight_total * g_const * c_rr
         F_grav = weight_total * g_const * (gradient / 100.0)
+
         F_total = F_aero + F_roll + F_grav
+
         if F_total <= 0:
             break
+
         v = P / F_total
 
     v_kmh = v * 3.6
+
+    # Grenzen
     v_kmh = max(v_kmh, min_speed)
     if gradient < 0:
         v_kmh = min(v_kmh, max_downhill_speed)
+
     return v_kmh
+
+
+# ---------------------------------------------------------
+# DEBUG-PANEL (F_aero, F_roll, F_grav)
+# ---------------------------------------------------------
+def build_debug(df: pd.DataFrame) -> pd.DataFrame:
+    w_eff = wind_component_ms(wind_speed, wind_angle)
+    v_ms = df["speed_kmh"] / 3.6
+    v_rel = v_ms + w_eff
+
+    F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
+    F_roll = weight_total * g_const * c_rr
+    F_grav = weight_total * g_const * (df["gradient"] / 100.0)
+    F_total = F_aero + F_roll + F_grav
+
+    dbg = pd.DataFrame({
+        "distance_km": df["distance_m"] / 1000.0,
+        "speed_kmh": df["speed_kmh"],
+        "F_aero": F_aero,
+        "F_roll": F_roll,
+        "F_grav": F_grav,
+        "F_total": F_total,
+    })
+
+    return dbg
+# ---------------------------------------------------------
+# PAUSEN & KONTROLLPUNKTE
+# ---------------------------------------------------------
+st.sidebar.header("⏱ Pausen & Kontrollpunkte")
+
+if "pauses" not in st.session_state:
+    st.session_state["pauses"] = []
+
+if "controls" not in st.session_state:
+    st.session_state["controls"] = []
+
+# --- Pause hinzufügen ---
+st.sidebar.subheader("Pause hinzufügen")
+pause_dist = st.sidebar.number_input("Pausenpunkt bei km", min_value=0.0, value=0.0, step=1.0)
+pause_minutes = st.sidebar.number_input("Pausendauer (min)", min_value=0, max_value=180, value=0)
+
+if st.sidebar.button("Pause hinzufügen"):
+    st.session_state["pauses"].append({"km": pause_dist, "pause_min": pause_minutes})
+
+# --- Kontrollpunkt hinzufügen ---
+st.sidebar.subheader("Kontrollpunkt hinzufügen")
+control_dist = st.sidebar.number_input("Kontrollpunkt bei km", min_value=0.0, value=0.0, step=1.0)
+control_pause = st.sidebar.number_input("Pause am Kontrollpunkt (min)", min_value=0, max_value=180, value=0)
+
+if st.sidebar.button("Kontrollpunkt hinzufügen"):
+    st.session_state["controls"].append({"km": control_dist, "pause_min": control_pause})
+
+# Anzeigen
+st.sidebar.write("### Pausenpunkte")
+st.sidebar.write(st.session_state["pauses"])
+
+st.sidebar.write("### Kontrollpunkte")
+st.sidebar.write(st.session_state["controls"])
+
+
+# ---------------------------------------------------------
+# ACP ÖFFNUNGS- UND SCHLIEßZEITEN
+# ---------------------------------------------------------
+def acp_open_close(dist_km):
+    vmax = 34.0   # ACP Max-Speed
+    vmin = 15.0   # ACP Min-Speed
+
+    open_h = dist_km / vmax
+    close_h = dist_km / vmin
+
+    return timedelta(hours=open_h), timedelta(hours=close_h)
 
 
 # ---------------------------------------------------------
@@ -260,10 +296,12 @@ def add_time_profile(df: pd.DataFrame):
 
         km_now = df.distance_m.iloc[i] / 1000.0
 
+        # Pausenpunkte
         for p in pauses:
             if abs(km_now - p["km"]) < 0.05:
                 new_time += p["pause_min"] * 60
 
+        # Kontrollpunkte
         for c in controls:
             if abs(km_now - c["km"]) < 0.05:
                 new_time += c["pause_min"] * 60
@@ -275,6 +313,7 @@ def add_time_profile(df: pd.DataFrame):
     df["time_s"] = times
     df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
 
+    # ACP Zeiten für Kontrollpunkte
     acp_list = []
     for c in controls:
         open_t, close_t = acp_open_close(c["km"])
@@ -283,48 +322,97 @@ def add_time_profile(df: pd.DataFrame):
             "open": start_datetime + open_t,
             "close": start_datetime + close_t
         })
+
     df_acp = pd.DataFrame(acp_list)
 
     return df, df_acp
 
 
 # ---------------------------------------------------------
-# GESCHWINDIGKEITSKURVE GLÄTTEN
+# ZUSAMMENFASSUNGSTABELLE
 # ---------------------------------------------------------
-def smooth_speed(df, window=9):
-    df["speed_kmh_smooth"] = df["speed_kmh"].rolling(window, center=True).mean()
-    df["speed_kmh_smooth"].fillna(df["speed_kmh"], inplace=True)
-    return df
+def build_summary(df: pd.DataFrame, df_acp: pd.DataFrame):
+    summary_rows = []
 
-
-# ---------------------------------------------------------
-# DEBUG-PANEL (F_aero, F_roll, F_grav)
-# ---------------------------------------------------------
-def build_debug(df: pd.DataFrame) -> pd.DataFrame:
-    w_eff = wind_component_ms(wind_speed, wind_angle)
-    v_ms = df["speed_kmh"] / 3.6
-    v_rel = v_ms + w_eff
-    F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
-    F_roll = weight_total * g_const * c_rr
-    F_grav = weight_total * g_const * (df["gradient"] / 100.0)
-    F_total = F_aero + F_roll + F_grav
-    dbg = pd.DataFrame({
-        "distance_km": df["distance_m"] / 1000.0,
-        "speed_kmh": df["speed_kmh"],
-        "F_aero": F_aero,
-        "F_roll": F_roll,
-        "F_grav": F_grav,
-        "F_total": F_total,
+    # Startpunkt
+    summary_rows.append({
+        "Punkt": "Start",
+        "km": 0.0,
+        "Ankunft": start_datetime,
+        "Pause (min)": 0,
+        "ACP Open": "-",
+        "ACP Close": "-",
+        "Abschnitt km": 0.0,
+        "Abschnitt Zeit": "0:00",
+        "Abschnitt Ø km/h": "-",
+        "Gesamtzeit": "0:00",
+        "Gesamt Ø km/h": "-"
     })
-    return dbg
 
+    # Pausen + Kontrollpunkte sortieren
+    all_points = []
 
+    for p in st.session_state["pauses"]:
+        all_points.append({"km": p["km"], "pause": p["pause_min"], "type": "Pause"})
+
+    for c in st.session_state["controls"]:
+        all_points.append({"km": c["km"], "pause": c["pause_min"], "type": "Kontrolle"})
+
+    all_points = sorted(all_points, key=lambda x: x["km"])
+
+    last_km = 0.0
+    last_time = start_datetime
+
+    for p in all_points:
+        km = p["km"]
+
+        # Nächsten GPX-Punkt finden
+        row = df.iloc[(df.distance_m/1000 - km).abs().argmin()]
+
+        arrival = row.sim_time
+        pause_min = p["pause"]
+
+        # Abschnittsdaten
+        section_km = km - last_km
+        section_time = arrival - last_time
+        section_h = section_time.total_seconds() / 3600.0
+        section_speed = section_km / section_h if section_h > 0 else 0
+
+        # ACP Zeiten
+        acp_row = df_acp[df_acp["km"] == km]
+        if len(acp_row) > 0:
+            acp_open = acp_row.iloc[0]["open"]
+            acp_close = acp_row.iloc[0]["close"]
+        else:
+            acp_open = "-"
+            acp_close = "-"
+
+        summary_rows.append({
+            "Punkt": p["type"],
+            "km": km,
+            "Ankunft": arrival,
+            "Pause (min)": pause_min,
+            "ACP Open": acp_open,
+            "ACP Close": acp_close,
+            "Abschnitt km": round(section_km, 1),
+            "Abschnitt Zeit": str(section_time),
+            "Abschnitt Ø km/h": round(section_speed, 1),
+            "Gesamtzeit": str(arrival - start_datetime),
+            "Gesamt Ø km/h": round(km / ((arrival - start_datetime).total_seconds()/3600), 1) if km > 0 else "-"
+        })
+
+        # Pause einrechnen
+        last_km = km
+        last_time = arrival + timedelta(minutes=pause_min)
+
+    return pd.DataFrame(summary_rows)
 # ---------------------------------------------------------
 # KARTE MIT GROßEN MARKERN
 # ---------------------------------------------------------
 def show_map(df: pd.DataFrame):
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=10)
 
+    # GPX-Linie
     folium.PolyLine(
         df[["lat", "lon"]].values,
         color="red",
@@ -332,6 +420,7 @@ def show_map(df: pd.DataFrame):
         opacity=0.8
     ).add_to(m)
 
+    # Kontrollpunkte
     for c in st.session_state["controls"]:
         row = df.iloc[(df.distance_m / 1000.0 - c["km"]).abs().argmin()]
         folium.CircleMarker(
@@ -343,6 +432,7 @@ def show_map(df: pd.DataFrame):
             tooltip=f"Kontrollpunkt {c['km']} km – Pause {c['pause_min']} min"
         ).add_to(m)
 
+    # Pausenpunkte
     for p in st.session_state["pauses"]:
         row = df.iloc[(df.distance_m / 1000.0 - p["km"]).abs().argmin()]
         folium.CircleMarker(
@@ -358,15 +448,29 @@ def show_map(df: pd.DataFrame):
 
 
 # ---------------------------------------------------------
+# GESCHWINDIGKEITSKURVE GLÄTTEN
+# ---------------------------------------------------------
+def smooth_speed(df, window=9):
+    df["speed_kmh_smooth"] = df["speed_kmh"].rolling(window, center=True).mean()
+    df["speed_kmh_smooth"].fillna(df["speed_kmh"], inplace=True)
+    return df
+
+
+# ---------------------------------------------------------
 # MAIN LOGIC
 # ---------------------------------------------------------
 if uploaded_file is None:
     st.info("Bitte eine GPX-Datei hochladen, um die Simulation zu starten.")
 else:
+    # GPX laden + Simulation
     df = parse_gpx(uploaded_file)
     df, df_acp = add_time_profile(df)
     df = smooth_speed(df)
 
+    # Zusammenfassungstabelle
+    summary_df = build_summary(df, df_acp)
+
+    # Charts
     st.subheader("Streckenprofil & Simulation")
     col1, col2 = st.columns(2)
 
@@ -376,20 +480,29 @@ else:
     with col2:
         st.line_chart(df.set_index("distance_m")[["speed_kmh_smooth"]], height=250)
 
+    # Karte
     st.subheader("🗺 Karte")
     st_folium(show_map(df), width=900, height=500)
 
+    # Zeitprofil
     st.subheader("Zeitprofil")
     st.write(df[["distance_m", "elev", "gradient", "speed_kmh", "speed_kmh_smooth", "sim_time"]])
 
+    # ACP Zeiten
     st.subheader("ACP Kontrollzeiten")
     st.write(df_acp)
 
+    # Zusammenfassung
+    st.subheader("📘 Zusammenfassung")
+    st.write(summary_df)
+
+    # Debug Panel
     if debug_flag:
         st.subheader("🔍 Debug-Panel – Kräfte")
         dbg = build_debug(df)
         st.dataframe(dbg.head(200))
 
+    # Gesamtzeit
     total_time = df["time_s"].iloc[-1] / 3600.0
     st.success(f"Gesamtzeit: {total_time:.2f} Stunden")
 
@@ -400,6 +513,7 @@ else:
     with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
         df.to_excel(writer, sheet_name="Simulation", index=False)
         df_acp.to_excel(writer, sheet_name="ACP", index=False)
+        summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
 
     st.download_button(
         label="📥 Excel exportieren",
@@ -433,304 +547,3 @@ else:
         mime="application/pdf"
     )
 
-# ---------------------------------------------------------
-# VISUALISIERUNG – KARTE
-# ---------------------------------------------------------
-def show_map(df):
-    if df.empty:
-        st.warning("Keine GPS-Daten.")
-        return
-
-    path = df.apply(lambda r: [r.lon, r.lat], axis=1).tolist()
-    midpoint = (df.lat.mean(), df.lon.mean())
-
-    layers = [
-        pdk.Layer(
-            "PathLayer",
-            data=[{"path": path}],
-            get_path="path",
-            get_color=[255, 0, 0],
-            width_scale=2,
-            width_min_pixels=2,
-        )
-    ]
-
-    def add_points(points, color):
-        data = []
-        for p in points:
-            nearest = df.iloc[(df.km - p["km"]).abs().argmin()]
-            data.append({
-                "lon": nearest.lon,
-                "lat": nearest.lat,
-                "name": p.get("name", "Pause"),
-                "pause_min": p["pause_min"],
-            })
-        return pdk.Layer(
-            "ScatterplotLayer",
-            data=data,
-            get_position="[lon, lat]",
-            get_color=color,
-            get_radius=1500,
-        )
-
-    layers.append(add_points(st.session_state["control_points"], [0, 100, 255]))
-    layers.append(add_points(st.session_state["pauses"], [255, 220, 0]))
-
-    st.pydeck_chart(
-        pdk.Deck(
-            layers=layers,
-            initial_view_state=pdk.ViewState(
-                latitude=midpoint[0],
-                longitude=midpoint[1],
-                zoom=10
-            ),
-            tooltip={"html": "<b>{name}</b><br/>Pause: {pause_min} min"},
-        )
-    )
-# ---------------------------------------------------------
-# VISUALISIERUNG – HÖHENPROFIL
-# ---------------------------------------------------------
-def show_elevation_profile(df: pd.DataFrame):
-    if "elevation" not in df or df["elevation"].isna().all():
-        st.info("Keine Höhendaten in dieser GPX-Datei.")
-        return
-
-    df_plot = df.copy()
-    df_plot["elevation_smooth"] = df_plot["elevation"].rolling(window=25, center=True, min_periods=1).mean()
-    df_plot["gradient_smooth"] = df_plot["gradient"].rolling(window=25, center=True, min_periods=1).mean()
-
-    def gradient_color(g):
-        if g < 2:
-            return "green"
-        elif g < 5:
-            return "yellow"
-        elif g < 8:
-            return "orange"
-        else:
-            return "red"
-
-    df_plot["color"] = df_plot["gradient_smooth"].apply(gradient_color)
-
-    chart = (
-        alt.Chart(df_plot)
-        .mark_bar()
-        .encode(
-            x=alt.X("km:Q", title="Distanz (km)"),
-            y=alt.Y("elevation_smooth:Q", title="Höhe (m)"),
-            color=alt.Color("color:N", scale=None, legend=None),
-        )
-        .properties(height=250)
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-# ---------------------------------------------------------
-# VISUALISIERUNG – SPEED
-# ---------------------------------------------------------
-def show_speed(df):
-    chart = (
-        alt.Chart(df)
-        .mark_line(color="green")
-        .encode(x="km", y="speed_kmh")
-        .properties(height=250)
-    )
-    st.altair_chart(chart, use_container_width=True)
-# ---------------------------------------------------------
-# ZUSAMMENFASSUNG – Version B.2 (10 Spalten)
-# ---------------------------------------------------------
-def build_summary(df):
-
-    def fmt_km(value):
-        return int(round(value))
-
-    def fmt_hhmm(td):
-        total = int(td.total_seconds())
-        h = total // 3600
-        m = (total % 3600) // 60
-        return f"{h:02d}:{m:02d}"
-
-    def fmt_speed(km, td):
-        hours = td.total_seconds() / 3600
-        if hours <= 0:
-            return 0
-        return round(km / hours)
-
-    points = [{"km": 0.0, "name": "Start", "pause_min": 0}]
-    points += st.session_state["control_points"]
-    points += [{"km": p["km"], "name": "Pause", "pause_min": p["pause_min"]} for p in st.session_state["pauses"]]
-    points.append({"km": df.km.iloc[-1], "name": "Ziel", "pause_min": 0})
-
-    points = sorted(points, key=lambda x: x["km"])
-
-    rows = []
-    last_km = 0
-    last_time = df.sim_time_with_pauses.iloc[0]
-    start_time = df.sim_time_with_pauses.iloc[0]
-    last_elev = df.elevation.iloc[0]
-
-    for p in points:
-        nearest = df.iloc[(df.km - p["km"]).abs().argmin()]
-        km_total = nearest.km
-        km_diff = km_total - last_km
-        time_total = nearest.sim_time_with_pauses
-        time_diff = time_total - last_time
-        elev_total = nearest.elevation
-        elev_diff = elev_total - last_elev
-
-        rows.append({
-            "Name": p["name"],
-            "KM gesamt": fmt_km(km_total),
-            "KM Abschnitt": fmt_km(km_diff),
-            "HM gesamt": int(round(elev_total)) if pd.notna(elev_total) else 0,
-            "HM Abschnitt": int(round(elev_diff)) if pd.notna(elev_diff) else 0,
-            "Ankunftszeit": time_total.strftime("%d.%m.%Y %H:%M"),
-            "Zeit gesamt": fmt_hhmm(time_total - start_time),
-            "Zeit Abschnitt": fmt_hhmm(time_diff),
-            "Ø‑km/h gesamt": fmt_speed(km_total, time_total - start_time),
-            "Ø‑km/h Abschnitt": fmt_speed(km_diff, time_diff),
-            "Pause (min)": p["pause_min"],
-        })
-
-        last_km = km_total
-        last_time = time_total
-        last_elev = elev_total
-
-    return pd.DataFrame(rows)
-# ---------------------------------------------------------
-# EXCEL EXPORT
-# ---------------------------------------------------------
-def export_summary_excel(summary_df):
-    excel_buffer = BytesIO()
-    with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-        summary_df.to_excel(writer, sheet_name="Zusammenfassung", index=False)
-    return excel_buffer.getvalue()
-# ---------------------------------------------------------
-# PDF EXPORT – KOMPAKT (A1, 10 SPALTEN)
-# ---------------------------------------------------------
-def export_summary_pdf(summary_df):
-    pdf_buffer = BytesIO()
-    c = canvas.Canvas(pdf_buffer, pagesize=A4)
-    width, height = A4
-
-    # Layout
-    x_positions = [20, 70, 120, 160, 200, 240, 280, 320, 360, 400, 450]
-    headers = [
-        "Name", "KM ges.", "KM Abs.", "HM ges.", "HM Abs.", "Ankunftszeit",
-        "Zeit ges.", "Zeit Abs.", "Ø km/h g.", "Ø km/h A.", "Pause"
-    ]
-
-    y = height - 30
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(20, y, "Brevet Zusammenfassung")
-    y -= 20
-
-    # Header
-    c.setFont("Helvetica-Bold", 7)
-    for x, h in zip(x_positions, headers):
-        c.drawString(x, y, h)
-
-    y -= 8
-    c.line(15, y, width - 15, y)
-    y -= 10
-
-    # Rows
-    c.setFont("Helvetica", 7)
-
-    for _, row in summary_df.iterrows():
-        values = [
-            row["Name"],
-            row["KM gesamt"],
-            row["KM Abschnitt"],
-            row["HM gesamt"],
-            row["HM Abschnitt"],
-            row["Ankunftszeit"],
-            row["Zeit gesamt"],
-            row["Zeit Abschnitt"],
-            row["Ø‑km/h gesamt"],
-            row["Ø‑km/h Abschnitt"],
-            row["Pause (min)"],
-        ]
-
-        for x, v in zip(x_positions, values):
-            c.drawString(x, y, str(v))
-
-        y -= 10
-
-        if y < 40:
-            c.showPage()
-            y = height - 40
-            c.setFont("Helvetica", 7)
-
-    c.save()
-    return pdf_buffer.getvalue()
-# ---------------------------------------------------------
-# GPX UPLOAD + HAUPTAUSGABE
-# ---------------------------------------------------------
-uploaded_files = st.file_uploader(
-    "GPX-Dateien hochladen",
-    type=["gpx"],
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-    all_dfs = {}
-
-    for file in uploaded_files:
-        st.subheader(f"📍 {file.name}")
-
-        df = parse_gpx(file)
-        df = add_distance_and_gradient(df)
-        df = add_time_profile(df)
-        df = apply_pauses(df)
-
-        # Karte
-        st.subheader("🗺️ Karte")
-        show_map(df)
-
-        # Höhenprofil
-        st.subheader("⛰️ Höhenprofil")
-        show_elevation_profile(df)
-
-        # Speed
-        st.subheader("📈 Geschwindigkeitskurve")
-        show_speed(df)
-
-        # Summary
-        st.subheader("📋 Kontroll‑ & Pausentabelle")
-        summary_df = build_summary(df)
-        st.dataframe(summary_df)
-
-        # Excel Export
-        st.download_button(
-            "📥 Excel Export",
-            export_summary_excel(summary_df),
-            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        # PDF Export
-        st.download_button(
-            "📄 PDF Export (kompakt)",
-            export_summary_pdf(summary_df),
-            file_name=f"brevet_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
-
-        # Ankunftszeit
-        finish_time = df.sim_time_with_pauses.iloc[-1]
-        total_time = finish_time - start_datetime
-
-        st.markdown(f"**Ankunftszeit (inkl. Pausen):** {finish_time.strftime('%d.%m.%Y %H:%M')}")
-
-        total_hours = int(total_time.total_seconds() // 3600)
-        total_minutes = int((total_time.total_seconds() % 3600) // 60)
-        st.markdown(f"**Gesamtzeit:** {total_hours:02d}:{total_minutes:02d} Std")
-
-        all_dfs[file.name] = df
-else:
-    st.info("Bitte eine oder mehrere GPX-Dateien hochladen.")
-# ---------------------------------------------------------
-# CLOUD‑STABILER RERUN (OHNE experimental_rerun)
-# ---------------------------------------------------------
-if st.session_state.get("trigger_rerun", False):
-    st.session_state["trigger_rerun"] = False
-    st.session_state["__rerun_placeholder"] = datetime.now().timestamp()
