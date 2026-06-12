@@ -205,6 +205,32 @@ def compute_speed(df, params):
 
     v_final = np.maximum(v_phys, v_target * hybrid)
     return v_final
+# -----------------------------------------------------
+# ZEITPROFIL BERECHNEN (einfaches kumuliertes Modell)
+# -----------------------------------------------------
+def add_time_profile(df, params):
+
+    # Geschwindigkeit in m/s
+    v_ms = df["speed_kmh"].values * (1000 / 3600)
+
+    # Zeit pro Segment
+    time_s = np.zeros(len(df))
+    for i in range(1, len(df)):
+        dx = df["distance_m"].iloc[i] - df["distance_m"].iloc[i-1]
+        v = max(v_ms[i], 0.1)  # Schutz gegen 0
+        time_s[i] = dx / v
+
+    df["time_s"] = time_s
+    df["cum_seconds"] = df["time_s"].cumsum()
+
+    # Dummy-ACP-Tabelle (optional)
+    df_acp = pd.DataFrame({
+        "km": df["km"],
+        "open": df["cum_seconds"],
+        "close": df["cum_seconds"]
+    })
+
+    return df, df_acp
 
 # -----------------------------------------------------
 # ZUSAMMENFASSUNG ERZEUGEN
