@@ -450,13 +450,14 @@ auto_vs_up = round(ftp * 0.04)
 auto_ldown = round(ftp * 0.13)
 auto_down  = round(ftp * 0.15)
 
-spd_down  = st.sidebar.number_input("Bergab", 10.0, 90.0, auto_down)
-spd_ldown = st.sidebar.number_input("Leicht bergab", 10.0, 70.0, auto_ldown)
-spd_flat  = st.sidebar.number_input("Flach", 10.0, 50.0, auto_flat)
-spd_lup   = st.sidebar.number_input("Leicht bergauf", 5.0, 40.0, auto_lup)
-spd_mup   = st.sidebar.number_input("Mittel bergauf", 5.0, 35.0, auto_mup)
-spd_sup   = st.sidebar.number_input("Steil bergauf", 3.0, 30.0, auto_sup)
-spd_vs_up = st.sidebar.number_input("Sehr steil", 2.0, 25.0, auto_vs_up)
+spd_down  = st.sidebar.number_input("Bergab", 10.0, 90.0, float(auto_down))
+spd_ldown = st.sidebar.number_input("Leicht bergab", 10.0, 70.0, float(auto_ldown))
+spd_flat  = st.sidebar.number_input("Flach", 10.0, 50.0, float(auto_flat))
+spd_lup   = st.sidebar.number_input("Leicht bergauf", 5.0, 40.0, float(auto_lup))
+spd_mup   = st.sidebar.number_input("Mittel bergauf", 5.0, 35.0, float(auto_mup))
+spd_sup   = st.sidebar.number_input("Steil bergauf", 3.0, 30.0, float(auto_sup))
+spd_vs_up = st.sidebar.number_input("Sehr steil", 2.0, 25.0, float(auto_vs_up))
+
 
 # Hybrid-Faktor (0.5 = Physik dominiert, 1.0 = Zieltempo dominiert)
 hybrid_factor = st.sidebar.slider(
