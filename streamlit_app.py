@@ -10,8 +10,6 @@ import altair as alt
 import xml.etree.ElementTree as ET
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-
-
 # ---------------------------------------------------------
 # STREAMLIT CONFIG
 # ---------------------------------------------------------
@@ -23,8 +21,6 @@ st.set_page_config(
 )
 
 st.title("Brevet Zeit Kalkulator")
-
-
 # ---------------------------------------------------------
 # INITIAL SESSION STATE
 # ---------------------------------------------------------
@@ -40,8 +36,6 @@ DEFAULTS = {
 
 for key, value in DEFAULTS.items():
     st.session_state.setdefault(key, value)
-
-
 # ---------------------------------------------------------
 # SIDEBAR – SIMULATION
 # ---------------------------------------------------------
@@ -74,7 +68,6 @@ power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=40
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
 min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
 max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
-
 # ---------------------------------------------------------
 # ZIELGESCHWINDIGKEITEN
 # ---------------------------------------------------------
@@ -117,8 +110,6 @@ st.sidebar.subheader("Wetter Modell")
 air_density = st.sidebar.number_input("Luftdichte ρ (kg/m³)", 1.0, 1.4, 1.225, 0.01)
 wind_speed = st.sidebar.number_input("Windgeschwindigkeit (km/h)", 0, 80, 10)
 wind_angle = st.sidebar.slider("Windrichtung: 0° = Gegenwind, 180° = Rückenwind", 0, 360, 180)
-
-
 # ---------------------------------------------------------
 # KONTROLLPUNKTE – VERZÖGERTER RERUN
 # ---------------------------------------------------------
@@ -150,8 +141,6 @@ if st.sidebar.button("Kontrolle/Pause hinzufügen"):
         "pause": new_cp_pause,
     }
     st.session_state["trigger_rerun"] = True
-
-
 # ---------------------------------------------------------
 # PAUSEN – VERZÖGERTER RERUN
 # ---------------------------------------------------------
@@ -177,8 +166,6 @@ if st.sidebar.button("Kontrolle/Pause hinzufügen"):
 #        "pause": new_pause_min,
 #    }
 #    st.session_state["trigger_rerun"] = True
-
-
 # ---------------------------------------------------------
 # VERARBEITUNG DER PENDING EVENTS
 # ---------------------------------------------------------
@@ -210,8 +197,6 @@ if "pending_add_pause" in st.session_state:
     st.session_state["new_pause_min"] = 0
 
     del st.session_state["pending_add_pause"]
-
-
 # ---------------------------------------------------------
 # ANZEIGE DER PUNKTE
 # ---------------------------------------------------------
@@ -222,8 +207,6 @@ for cp in st.session_state["control_points"]:
 #st.sidebar.subheader("Pausenpunkte")
 #for p in st.session_state["pauses"]:
 #   st.sidebar.write(f"• Pause bei {p['km']} km – {p['pause_min']} min")
-
-
 # ---------------------------------------------------------
 # GPX PARSER
 # ---------------------------------------------------------
@@ -247,8 +230,6 @@ def parse_gpx(file) -> pd.DataFrame:
         })
 
     return pd.DataFrame(data)
-
-
 # ---------------------------------------------------------
 # HAVERSINE DISTANCE
 # ---------------------------------------------------------
@@ -260,8 +241,6 @@ def haversine(lat1, lon1, lat2, lon2):
 
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
 # ---------------------------------------------------------
 # DISTANZ + STEIGUNG
 # ---------------------------------------------------------
@@ -284,7 +263,6 @@ def add_distance_and_gradient(df):
         df["gradient"] = 0.0
 
     return df
-
 # ---------------------------------------------------------
 # PHYSIK-PARAMETER
 # ---------------------------------------------------------
@@ -293,8 +271,6 @@ cda = 0.32           # Stirnfläche * Cd (Rennradfahrer)
 crr = 0.004          # Rollwiderstand
 mass = 85.0          # Fahrer + Rad [kg]
 g_const = 9.81       # Erdbeschleunigung [m/s²]
-
-
 # ---------------------------------------------------------
 # WINDKOMPONENTE IN FAHRRICHTUNG
 # ---------------------------------------------------------
@@ -307,8 +283,6 @@ def wind_component(wind_speed_kmh, wind_angle_deg):
     w = wind_speed_kmh / 3.6
     angle = math.radians(wind_angle_deg)
     return w * math.cos(angle)
-
-
 # ---------------------------------------------------------
 # REALISTISCHES SPEED-MODELL MIT WIND & PHYSIK
 # ---------------------------------------------------------
@@ -347,9 +321,6 @@ def compute_speed(gradient):
         v_kmh = min(v_kmh, max_downhill_speed)
 
     return v_kmh
-
-
-
 # ---------------------------------------------------------
 # ZEITPROFIL MIT PHYSIK-SPEED
 # ---------------------------------------------------------
@@ -392,10 +363,6 @@ def add_time_profile(df):
     df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
 
     return df
-
-    
-
-
 # ---------------------------------------------------------
 # PAUSENLOGIK
 # ---------------------------------------------------------
@@ -481,8 +448,6 @@ def show_map(df):
             tooltip={"html": "<b>{name}</b><br/>Pause: {pause_min} min"},
         )
     )
-
-
 # ---------------------------------------------------------
 # VISUALISIERUNG – HÖHENPROFIL
 # ---------------------------------------------------------
@@ -519,8 +484,6 @@ def show_elevation_profile(df: pd.DataFrame):
     )
 
     st.altair_chart(chart, use_container_width=True)
-
-
 # ---------------------------------------------------------
 # VISUALISIERUNG – SPEED
 # ---------------------------------------------------------
@@ -532,8 +495,6 @@ def show_speed(df):
         .properties(height=250)
     )
     st.altair_chart(chart, use_container_width=True)
-
-
 # ---------------------------------------------------------
 # ZUSAMMENFASSUNG – Version B.2 (10 Spalten)
 # ---------------------------------------------------------
@@ -595,8 +556,6 @@ def build_summary(df):
         last_elev = elev_total
 
     return pd.DataFrame(rows)
-
-
 # ---------------------------------------------------------
 # EXCEL EXPORT
 # ---------------------------------------------------------
@@ -664,8 +623,6 @@ def export_summary_pdf(summary_df):
 
     c.save()
     return pdf_buffer.getvalue()
-
-
 # ---------------------------------------------------------
 # GPX UPLOAD + HAUPTAUSGABE
 # ---------------------------------------------------------
@@ -741,19 +698,3 @@ else:
 if st.session_state.get("trigger_rerun", False):
     st.session_state["trigger_rerun"] = False
     st.session_state["__rerun_placeholder"] = datetime.now().timestamp()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
