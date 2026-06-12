@@ -209,6 +209,22 @@ def compute_speed(df, params):
 # -----------------------------------------------------
 # DISTANZ BERECHNEN (Meter)
 # -----------------------------------------------------
+
+# -----------------------------------------------------
+# HAVERSINE (Meter)
+# -----------------------------------------------------
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371000  # Erdradius in Metern
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlambda = np.radians(lon2 - lon1)
+
+    a = np.sin(dphi/2)**2 + np.cos(phi1)*np.cos(phi2)*np.sin(dlambda/2)**2
+    return 2 * R * np.arcsin(np.sqrt(a))
+# -----------------------------------------------------
+# DISTANZ BERECHNEN (Meter)
+# -----------------------------------------------------
 def compute_distance(df):
     dist = [0.0]
     for i in range(1, len(df)):
@@ -217,7 +233,7 @@ def compute_distance(df):
         d = haversine(lat1, lon1, lat2, lon2)
         dist.append(dist[-1] + d)
     return np.array(dist)
-    
+
     
 def add_time_profile(df, params):
     df["speed_kmh"] = compute_speed(df, params)
