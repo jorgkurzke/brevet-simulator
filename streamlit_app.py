@@ -109,57 +109,62 @@ def wind_component(w, ang):
 # -----------------------------------------------------
 # SPEED MODEL (Hybrid C2, vektorisiert)
 # -----------------------------------------------------
+# -----------------------------------------------------
+# FTP-basiertes Speed-Modell (C4-Hybrid)
+# -----------------------------------------------------
 def compute_speed(df, params):
-    g = df["gradient"].values
+    g = df["gradient"].values / 100.0  # Steigung in Dezimalform
 
-    # Zielgeschwindigkeit nach Steigung
-    v_t = np.select(
-        [
-            g < -3,
-            g < -1,
-            g < 1,
-            g < 3,
-            g < 6,
-            g < 10
-        ],
-        [
-            params["spd_down"],
-            params["spd_ldown"],
-            params["spd_flat"],
-            params["spd_lup"],
-            params["spd_mup"],
-            params["spd_sup"]
-        ],
-        default=params["spd_vs_up"]
-    )
+    # Leistung aus FTP ableiten
+    # flach = 75%, bergauf = 90%, bergab = 50%
+    P_flat = params["ftp"] * 0.75
+    P_up   = params["ftp"] * 0.90
+    P_down = params["ftp"] * 0.50
 
-    # Leistung nach Steigung
+    # Leistung je nach Steigung
     P = np.select(
-        [g < -1, g <= 1],
-        [params["w_down"], params["w_flat"]],
-        default=params["w_up"]
+        [g < -0.01, g <= 0.01],
+        [P_down, P_flat],
+        default=P_up
     )
 
-    # Kräfte
-    w = wind_component(params["wind"], params["wind_ang"])
+    # Physikalische Kräfte
+    w = wind_component(params["wind"], params["wind_ang"])  # Gegenwind positiv
+    v_air = lambda v: (v / 3.6) + w                         # relative Luftgeschwindigkeit
+
     F_roll = params["weight"] * G * params["crr"]
-    F_grav = params["weight"] * G * (g / 100)
+    F_grav = params["weight"] * G * g
     A = 0.5 * AIR * params["cda"]
-    B = F_roll + F_grav
 
-    # Geschwindigkeit aus Leistung
-    v1 = P / np.maximum(B, 1e-6)
-    v2 = (P / np.maximum(A, 1e-6)) ** (1/3)
+    # Geschwindigkeit aus Leistung berechnen
+    v = np.zeros(len(df))
 
-    v = np.where(v1 < 8, v1, v2)
-    v = np.maximum(v, params["min_spd"] / 3.6)
-    v = v * 3.6
+    for i in range(len(df)):
+        # Kraftgleichung: P = v * (F_roll + F_grav + 0.5*rho*CdA*v_air^2)
+        # numerisch lösen
+        def f(v_ms):
+            return v_ms * (F_roll + F_grav[i] + A * v_air(v_ms*3.6)**2) - P[i]
 
-    # Zielgeschwindigkeit berücksichtigen
-    v = np.maximum(v, v_t * 0.7)
+        # einfache Newton-Iteration
+        v_ms = 5.0  # Startwert
+        for _ in range(12):
+            dv = 0.1
+            f1 = f(v_ms)
+            f2 = f(v_ms + dv)
+            slope = (f2 - f1) / dv
+            if abs(slope) < 1e-6:
+                break
+            v_ms = v_ms - f1 / slope
+            v_ms = max(v_ms, 0.1)
+
+        v[i] = v_ms * 3.6  # m/s → km/h
+
+    # Limits
+    v = np.maximum(v, params["min_spd"])
     v = np.minimum(v, params["max_down"])
 
     return v
+
 # -----------------------------------------------------
 # TIME PROFILE
 # -----------------------------------------------------
