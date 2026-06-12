@@ -216,53 +216,75 @@ def add_time_profile(df, params):
 
 
 # -----------------------------------------------------
-# SUMMARY TABLE
+# ZUSAMMENFASSUNG ERZEUGEN
 # -----------------------------------------------------
 def build_summary(df, control_points, pause_points, start_dt, df_acp):
-    pts = []
 
-    pts.append({"km": 0.0, "name": "Start", "type": "Start", "pause": 0})
+    rows = []
+
+    last_km = 0
+    last_time = 0
+    last_elev = df["elev"].iloc[0]
+
+    cum_t = 0  # Gesamtzeit in Sekunden
+
+    # Kontrollpunkte + Pausenpunkte zusammenführen
+    all_points = []
 
     for cp in control_points:
-        pts.append({
+        all_points.append({
             "km": cp["km"],
             "name": cp["name"],
             "type": "Kontrollpunkt",
-            "pause": cp["pause"]
+            "pause": 0
         })
 
     for pp in pause_points:
-        pts.append({
+        all_points.append({
             "km": pp["km"],
             "name": pp["name"],
             "type": "Pause",
             "pause": pp["pause"]
         })
 
-    pts.append({
-        "km": df["distance_m"].iloc[-1] / 1000,
-        "name": "Ziel",
-        "type": "Ziel",
+    # Sortieren nach Kilometer
+    all_points = sorted(all_points, key=lambda x: x["km"])
+
+    # Startpunkt hinzufügen
+    all_points.insert(0, {
+        "km": 0,
+        "name": "Start",
+        "type": "Start",
         "pause": 0
     })
 
-    pts = sorted(pts, key=lambda x: x["km"])
+    for p in all_points:
 
-    rows = []
-    last_km = 0
-    last_time = 0
-    last_elev = df["elev"].iloc[0]
+        # Index im DF finden
+        idx = df.index[df["km"] >= p["km"]].min()
 
-    for p in pts:
-        km = p["km"]
-        idx = (df["distance_m"] / 1000 - km).abs().idxmin()
+        km = df.loc[idx, "km"]
+        elev = df.loc[idx, "elev"]
 
-        elev = df["elev"].iloc[idx]
-        cum_t = df["cum_seconds"].iloc[idx]
-
+        # Abschnittswerte
         seg_km = km - last_km
-        seg_t = cum_t - last_time
-        seg_hm = elev - last_elev
+        seg_hm = max(0, elev - last_elev)
+
+        # Zeit seit letztem Punkt
+        seg_t = df.loc[idx, "time_s"] - last_time
+        cum_t += seg_t
+
+        # Pause addieren
+        if p["pause"] > 0:
+            cum_t += p["pause"] * 60
+
+        # Formatierte Zeiten
+        seg_time_str = str(dt.timedelta(seconds=int(seg_t)))[:-3]
+        cum_time_str = str(dt.timedelta(seconds=int(cum_t)))[:-3]
+
+        # Durchschnittsgeschwindigkeiten
+        avg_seg = int(round((seg_km / (seg_t / 3600)) if seg_t > 0 else 0))
+        avg_total = int(round((km / (cum_t / 3600)) if cum_t > 0 else 0))
 
         rows.append({
             "Typ": p["type"],
@@ -271,19 +293,20 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
             "KM Abschnitt": int(round(seg_km)),
             "HM Abschnitt": int(round(seg_hm)),
             "HM gesamt": int(round(elev - df["elev"].iloc[0])),
-            "Zeit Abschnitt": str(dt.timedelta(seconds=int(seg_t)))[:-3],  # HH:MM
-            "Zeit gesamt": str(dt.timedelta(seconds=int(cum_t)))[:-3],     # HH:MM
-            "Ø Abschnitt": int(round((seg_km / (seg_t / 3600)) if seg_t > 0 else 0)),
-            "Ø gesamt": int(round((km / (cum_t / 3600)) if cum_t > 0 else 0)),
+            "Zeit Abschnitt": seg_time_str,
+            "Zeit gesamt": cum_time_str,
+            "Ø Abschnitt": avg_seg,
+            "Ø gesamt": avg_total,
             "Pause (min)": p["pause"]
         })
 
-
+        # Update für nächsten Abschnitt
         last_km = km
-        last_time = cum_t
+        last_time = df.loc[idx, "time_s"]
         last_elev = elev
 
     return pd.DataFrame(rows)
+
 
 
 # -----------------------------------------------------
