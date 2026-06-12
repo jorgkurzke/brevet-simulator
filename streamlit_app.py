@@ -123,12 +123,25 @@ def parse_gpx(file) -> pd.DataFrame:
     })
 
     # Typen erzwingen
-    df["distance_m"] = df["distance_m"].astype(float)
-    df["elev"] = df["elev"].astype(float)
+    
+    # Elevation robust normalisieren
+    df["elev"] = pd.to_numeric(df["elev"], errors="coerce")
+    
+    # Falls ALLE Höhen None sind → setze 0
+    if df["elev"].isna().all():
+        df["elev"] = 0.0
+    
+    df["elev"].fillna(method="ffill", inplace=True)
+    df["elev"].fillna(method="bfill", inplace=True)
+    
+    df["distance_m"] = pd.to_numeric(df["distance_m"], errors="coerce")
+    df["distance_m"].fillna(method="ffill", inplace=True)
+    df["distance_m"].fillna(0.0, inplace=True)
 
     # Fehlende Werte stabilisieren
-    df["distance_m"].fillna(method="ffill", inplace=True)
-    df["elev"].fillna(method="ffill", inplace=True)
+    df["distance_m"] = df["distance_m"].astype(float)
+    #df["distance_m"].fillna(method="ffill", inplace=True)
+    
 
     # Gradient berechnen
     df["gradient"] = 0.0
