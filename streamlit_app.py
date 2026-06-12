@@ -115,6 +115,25 @@ def wind_component(w, ang):
 # -----------------------------------------------------
 # HYBRID C5: Zielgeschwindigkeit + FTP-Physik
 # -----------------------------------------------------
+# -----------------------------------------------------
+# STEIGUNG / GRADIENT BERECHNEN (%)
+# -----------------------------------------------------
+def compute_gradient(df):
+    elev = df["elev"].values
+    dist = df["distance_m"].values
+
+    grad = np.zeros(len(df))
+    for i in range(1, len(df)):
+        dh = elev[i] - elev[i-1]
+        dx = dist[i] - dist[i-1]
+        if dx > 0:
+            grad[i] = (dh / dx) * 100
+        else:
+            grad[i] = 0
+    return grad
+
+
+
 def compute_speed(df, params):
     g = df["gradient"].values / 100.0  # Steigung in Dezimalform
 
