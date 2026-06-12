@@ -220,6 +220,15 @@ def add_time_profile(df, params):
 # -----------------------------------------------------
 def build_summary(df, control_points, pause_points, start_dt, df_acp):
 
+    # Sicherstellen, dass df die km-Spalte hat
+    if "km" not in df.columns:
+        st.error("Fehler: DataFrame hat keine 'km'-Spalte. Reihenfolge der Verarbeitung prüfen!")
+        st.stop()
+    
+    # Ungültige Punkte entfernen
+    control_points = [cp for cp in control_points if cp["km"] is not None]
+    pause_points = [pp for pp in pause_points if pp["km"] is not None]
+
     rows = []
 
     last_km = 0
