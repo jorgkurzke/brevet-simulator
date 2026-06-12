@@ -65,15 +65,15 @@ start_datetime = datetime.combine(
 
 st.sidebar.header("⚙️ Simulationseinstellungen")
 
-ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 220, 5)
+ftp = st.sidebar.number_input("FTP [W]", min_value=100, max_value=400, value=220, step=10)
 
 # Leistungsprofile
 st.sidebar.subheader("Leistungsprofile")
 power_flat = st.sidebar.number_input("Flach (Watt)",  min_value=80, max_value=400, value=180)
 power_climb = st.sidebar.number_input("Berg (Watt)",  min_value=80, max_value=400, value=200)
 power_down = st.sidebar.number_input("Abfahrt (Watt)", min_value=50, max_value=400, value=120)
-max_downhill_speed = st.sidebar.number_input("Maximale Abfahrtsgeschwindigkeit (km/h)", 40, 120, 70)
-min_speed = st.sidebar.number_input("Minimale Geschwindigkeit (km/h)", 2, 15, 4)
+min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
+max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
 
 # ---------------------------------------------------------
 # ZIELGESCHWINDIGKEITEN
@@ -92,13 +92,13 @@ base_speeds = {
 
 ftp_factor = (ftp / 220) ** 0.35
 
-target_speed_flat = st.sidebar.number_input("Flach (−1% bis +1%)", 10.0, 45.0, round(base_speeds["flat"] * ftp_factor, 1))
-target_speed_light_down = st.sidebar.number_input("Leicht bergab (−3% bis −1%)", 10.0, 70.0, round(base_speeds["light_down"] * ftp_factor, 1))
-target_speed_down = st.sidebar.number_input("Stark bergab (< −3%)", 10.0, 120.0, round(base_speeds["down"] * ftp_factor, 1))
-target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1–3%)", 5.0, 40.0, round(base_speeds["light_up"] * ftp_factor, 1))
-target_speed_med_up = st.sidebar.number_input("Mäßig bergauf (3–6%)", 5.0, 35.0, round(base_speeds["med_up"] * ftp_factor, 1))
-target_speed_steep_up = st.sidebar.number_input("Stärker bergauf (6–10%)", 3.0, 30.0, round(base_speeds["steep_up"] * ftp_factor, 1))
-target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (>10%)", 2.0, 25.0, round(base_speeds["very_steep_up"] * ftp_factor, 1))
+target_speed_down = st.sidebar.number_input("Zielspeed Abfahrt (< -3%) [km/h]", 20.0, 80.0, 40.0, 1.0)
+target_speed_light_down = st.sidebar.number_input("Zielspeed leicht bergab (-3 bis -1%) [km/h]", 20.0, 60.0, 32.0, 1.0)
+target_speed_flat = st.sidebar.number_input("Zielspeed flach (-1 bis +1%) [km/h]", 15.0, 40.0, 28.0, 1.0)
+target_speed_light_up = st.sidebar.number_input("Zielspeed leicht bergauf (1 bis 3%) [km/h]", 10.0, 35.0, 24.0, 1.0)
+target_speed_med_up = st.sidebar.number_input("Zielspeed mittel bergauf (3 bis 6%) [km/h]", 8.0, 30.0, 20.0, 1.0)
+target_speed_steep_up = st.sidebar.number_input("Zielspeed steil bergauf (6 bis 10%) [km/h]", 6.0, 25.0, 16.0, 1.0)
+target_speed_very_steep_up = st.sidebar.number_input("Zielspeed sehr steil (> 10%) [km/h]", 5.0, 20.0, 12.0, 1.0)
 
 # Rad-Daten
 st.sidebar.subheader("Rad Daten")
@@ -293,26 +293,6 @@ cda = 0.32           # Stirnfläche * Cd (Rennradfahrer)
 crr = 0.004          # Rollwiderstand
 mass = 85.0          # Fahrer + Rad [kg]
 g_const = 9.81       # Erdbeschleunigung [m/s²]
-
-
-# ---------------------------------------------------------
-# SIDEBAR – LEISTUNG & WIND
-# ---------------------------------------------------------
-ftp = st.sidebar.number_input("FTP [W]", min_value=100, max_value=400, value=220, step=10)
-wind_speed = st.sidebar.number_input("Windgeschwindigkeit [km/h]", min_value=0.0, max_value=80.0, value=0.0, step=1.0)
-wind_angle = st.sidebar.slider("Windwinkel [°] (0° Rückenwind, 180° Gegenwind)", min_value=0, max_value=180, value=0)
-
-min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
-max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
-
-# Zielgeschwindigkeiten je Steigung (nur als Basis, Wind & Physik passen sie an)
-target_speed_down = st.sidebar.number_input("Zielspeed Abfahrt (< -3%) [km/h]",  min_value=20.0, max_value=80.0, value=40.0, step=1.0)
-target_speed_light_down = st.sidebar.number_input("Zielspeed leicht bergab (-3 bis -1%) [km/h]",  min_value=20.0, max_value=60.0, value=32.0, step=1.0)
-target_speed_flat = st.sidebar.number_input("Zielspeed flach (-1 bis +1%) [km/h]",  min_value=15.0, max_value=40.0, value=28.0, step=1.0)
-target_speed_light_up = st.sidebar.number_input("Zielspeed leicht bergauf (1 bis 3%) [km/h]",  min_value=10.0, max_value=35.0, value=24.0, step=1.0)
-target_speed_med_up = st.sidebar.number_input("Zielspeed mittel bergauf (3 bis 6%) [km/h]",  min_value=8.0, max_value=30.0, value=20.0, step=1.0)
-target_speed_steep_up = st.sidebar.number_input("Zielspeed steil bergauf (6 bis 10%) [km/h]",  min_value=6.0, max_value=25.0, value=16.0, step=1.0)
-target_speed_very_steep_up = st.sidebar.number_input("Zielspeed sehr steil (> 10%) [km/h]",  min_value=5.0, max_value=20.0, value=12.0, step=1.0)
 
 
 # ---------------------------------------------------------
