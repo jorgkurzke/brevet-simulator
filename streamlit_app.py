@@ -317,10 +317,15 @@ def compute_speed(gradient):
 
     # Mindest- und Maximalgeschwindigkeit
     v_kmh = max(v_kmh, min_speed)
-    if gradient < 0:
-        v_kmh = min(v_kmh, max_downhill_speed)
-    st.write("DEBUG FTP:", ftp, "base:", base, "v:", v)
-    return v_kmh
+
+if gradient < 0:
+    v_kmh = min(v_kmh, max_downhill_speed)
+
+# Debug-Ausgabe
+st.write("DEBUG FTP:", ftp, "base:", base, "v:", v)
+
+return v_kmh
+
 # ---------------------------------------------------------
 # ZEITPROFIL MIT PHYSIK-SPEED
 # ---------------------------------------------------------
