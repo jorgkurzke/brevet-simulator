@@ -75,6 +75,29 @@ uploaded_file = st.sidebar.file_uploader("GPX-Datei hochladen", type=["gpx"])
 # ---------------------------------------------------------
 # GPX PARSEN
 # ---------------------------------------------------------
+def safe_series(col) -> pd.Series:
+    """
+    Nimmt irgendetwas (Liste, Object-Spalte, Mixed-Typen),
+    gibt garantiert eine float-Series ohne NaNs zurück.
+    """
+    s = pd.Series(col)
+
+    # alles in float konvertieren, Unfug -> NaN
+    s = pd.to_numeric(s, errors="coerce")
+
+    # wenn alles NaN -> einfach 0
+    if s.isna().all():
+        return s.fillna(0.0)
+
+    # normaler Weg: vorwärts + rückwärts füllen
+    try:
+        s = s.ffill().bfill()
+    except TypeError:
+        # falls die Pandas-Version rumzickt
+        s = s.fillna(0.0)
+
+    return s.astype(float)
+
 def parse_gpx(file) -> pd.DataFrame:
     gpx = gpxpy.parse(file)
 
@@ -120,6 +143,7 @@ def parse_gpx(file) -> pd.DataFrame:
             # Sonst entstehen Distanzsprünge zwischen Segmenten
 
     # DataFrame erzeugen
+    # DataFrame erzeugen
     df = pd.DataFrame({
         "lat": lats,
         "lon": lons,
@@ -127,25 +151,11 @@ def parse_gpx(file) -> pd.DataFrame:
         "distance_m": dists
     })
 
-    # Typen robust erzwingen
-    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-    df["elev"] = pd.to_numeric(df["elev"], errors="coerce")
-    df["distance_m"] = pd.to_numeric(df["distance_m"], errors="coerce")
-
-    # Fehlende Werte stabilisieren
-    df["lat"].fillna(method="ffill", inplace=True)
-    df["lon"].fillna(method="ffill", inplace=True)
-
-    # Elevation: falls komplett leer → 0
-    if df["elev"].isna().all():
-        df["elev"] = 0.0
-
-    df["elev"].fillna(method="ffill", inplace=True)
-    df["elev"].fillna(method="bfill", inplace=True)
-
-    df["distance_m"].fillna(method="ffill", inplace=True)
-    df["distance_m"].fillna(0.0, inplace=True)
+    # Spalten robust normalisieren
+    df["lat"] = safe_series(df["lat"])
+    df["lon"] = safe_series(df["lon"])
+    df["elev"] = safe_series(df["elev"])
+    df["distance_m"] = safe_series(df["distance_m"])
 
     # Gradient berechnen
     df["gradient"] = 0.0
@@ -156,6 +166,7 @@ def parse_gpx(file) -> pd.DataFrame:
             df.loc[df.index[i], "gradient"] = (dh / dx) * 100.0
 
     return df
+
 
 
 # ---------------------------------------------------------
