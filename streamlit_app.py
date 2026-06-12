@@ -288,11 +288,10 @@ def build_map(df, control_points, pause_points):
 
     colormap = cm.LinearColormap(
         colors=["green", "yellow", "orange", "red"],
-        vmin=df["gradient"].min(),
-        vmax=df["gradient"].max()
+        vmin=float(df["gradient"].min()),
+        vmax=float(df["gradient"].max())
     )
 
-    # Eine einzige schnelle PolyLine
     folium.PolyLine(
         df[["lat", "lon"]].values,
         color="blue",
@@ -302,21 +301,18 @@ def build_map(df, control_points, pause_points):
 
     colormap.add_to(m)
 
-    # Start
     folium.Marker(
         [df["lat"].iloc[0], df["lon"].iloc[0]],
         popup="Start",
         icon=folium.Icon(color="green")
     ).add_to(m)
 
-    # Ziel
     folium.Marker(
         [df["lat"].iloc[-1], df["lon"].iloc[-1]],
         popup="Ziel",
         icon=folium.Icon(color="red")
     ).add_to(m)
 
-    # Kontrollpunkte
     for cp in control_points:
         idx = (df["distance_m"] / 1000 - cp["km"]).abs().idxmin()
         folium.Marker(
@@ -325,7 +321,6 @@ def build_map(df, control_points, pause_points):
             icon=folium.Icon(color="blue")
         ).add_to(m)
 
-    # Pausenpunkte
     for pp in pause_points:
         idx = (df["distance_m"] / 1000 - pp["km"]).abs().idxmin()
         folium.Marker(
@@ -356,6 +351,7 @@ def plot_elevation(df):
         margin=dict(l=40, r=20, t=40, b=40)
     )
     return fig
+
 
 # -----------------------------------------------------
 # TIME PROFILE
