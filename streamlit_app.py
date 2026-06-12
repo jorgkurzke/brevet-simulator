@@ -191,15 +191,13 @@ def wind_component_ms(wind_speed_kmh: float, wind_angle_deg: float) -> float:
 
 
 def segment_power(gradient: float) -> float:
-    # Einfaches Modell: bei Steigung näher an FTP, in der Ebene etwas darunter
-    if gradient >= 6:
-        return ftp * 0.95
-    elif gradient >= 2:
-        return ftp * 0.9
-    elif gradient >= -2:
-        return ftp * 0.75
+    if gradient < -1:
+        return watt_down
+    elif gradient <= 1:
+        return watt_flat
     else:
-        return ftp * 0.6
+        return watt_up
+
 # ---------------------------------------------------------
 # REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
 # ---------------------------------------------------------
