@@ -515,29 +515,30 @@ if uploaded:
     df["gradient"] = df["gradient"].clip(-30, 30)
 
     # Parameter-Bundle
-    params = {
-        "weight": weight,
-        "cda": cda,
-        "crr": crr,
-        "wind": wind,
-        "wind_ang": wind_ang,
-        "max_down": max_down,
-        "min_spd": min_spd,
-        "spd_down": spd_down,
-        "spd_ldown": spd_ldown,
-        "spd_flat": spd_flat,
-        "spd_lup": spd_lup,
-        "spd_mup": spd_mup,
-        "spd_sup": spd_sup,
-        "spd_vs_up": spd_vs_up,
-        "w_flat": w_flat,
-        "w_up": w_up,
-        "w_down": w_down,
-        "ftp": ftp
-        "hybrid_factor": hybrid_factor,
+   params = {
+    "weight": weight,
+    "cda": cda,
+    "crr": crr,
+    "wind": wind,
+    "wind_ang": wind_ang,
+    "max_down": max_down,
+    "min_spd": min_spd,
 
+    "spd_down": spd_down,
+    "spd_ldown": spd_ldown,
+    "spd_flat": spd_flat,
+    "spd_lup": spd_lup,
+    "spd_mup": spd_mup,
+    "spd_sup": spd_sup,
+    "spd_vs_up": spd_vs_up,
 
-    }
+    "w_flat": w_flat,
+    "w_up": w_up,
+    "w_down": w_down,
+
+    "ftp": ftp,
+    "hybrid_factor": hybrid_factor,
+}
 
     # Zeitprofil berechnen
     df, df_acp = add_time_profile(df, params)
