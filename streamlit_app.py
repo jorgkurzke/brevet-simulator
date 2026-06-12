@@ -295,7 +295,10 @@ def export_pdf(df_acp: pd.DataFrame, start_time: dt.datetime) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Arial", size=10)
+
+    # WICHTIG: Unicode-Schrift laden (Datei muss im Repo liegen!)
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=10)
 
     pdf.cell(0, 10, "Brevet Simulation – ACP Kontrollzeiten", ln=True)
 
@@ -307,12 +310,11 @@ def export_pdf(df_acp: pd.DataFrame, start_time: dt.datetime) -> bytes:
         open_t = start_time + dt.timedelta(seconds=open_s)
         close_t = start_time + dt.timedelta(seconds=close_s)
 
-        line = f"KM {km:5.1f}: Open {open_t} – Close {close_t}"
-        # Nicht-latin1-Zeichen entfernen
-        safe_line = line.encode("latin1", errors="ignore").decode("latin1", errors="ignore")
-        pdf.multi_cell(0, 8, safe_line)
+        line = f"KM {km:5.1f}: Öffnet {open_t} – Schließt {close_t}"
+        pdf.multi_cell(0, 8, line)
 
-    return pdf.output(dest="S").encode("latin1", errors="ignore")
+    # UTF‑8 Ausgabe
+    return pdf.output(dest="S").encode("utf-8")
 
 
 # -----------------------------------------------------
