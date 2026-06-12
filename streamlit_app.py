@@ -201,71 +201,72 @@ def segment_power(gradient: float) -> float:
 # ---------------------------------------------------------
 # REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
 # ---------------------------------------------------------
-def compute_speed(gradient: float) -> float:
-    # 1) Zielgeschwindigkeit nach Steigung (Sidebar)
-    if gradient < -3:
-        v_target = target_speed_down
-    elif gradient < -1:
-        v_target = target_speed_light_down
-    elif gradient < 1:
-        v_target = target_speed_flat
-    elif gradient < 3:
-        v_target = target_speed_light_up
-    elif gradient < 6:
-        v_target = target_speed_med_up
-    elif gradient < 10:
-        v_target = target_speed_steep_up
-    else:
-        v_target = target_speed_very_steep_up
+def compute_speed_vectorized(gradients):
+    gradients = np.array(gradients)
 
-    # 2) Physikalische Geschwindigkeit aus Leistung
-    #    (nutzt deine Watt flach / bergauf / bergab)
-    if gradient < -1:
-        P = watt_down
-    elif gradient <= 1:
-        P = watt_flat
-    else:
-        P = watt_up
+    # 1) Zielgeschwindigkeit nach Steigung
+    v_target = np.where(
+        gradients < -3, target_speed_down,
+        np.where(
+            gradients < -1, target_speed_light_down,
+            np.where(
+                gradients < 1, target_speed_flat,
+                np.where(
+                    gradients < 3, target_speed_light_up,
+                    np.where(
+                        gradients < 6, target_speed_med_up,
+                        np.where(
+                            gradients < 10, target_speed_steep_up,
+                            target_speed_very_steep_up
+                        )
+                    )
+                )
+            )
+        )
+    )
 
-    # Startwert für Iteration
-    v = max(v_target / 3.6, min_speed / 3.6)
+    # 2) Leistung nach Steigung
+    P = np.where(
+        gradients < -1, watt_down,
+        np.where(
+            gradients <= 1, watt_flat,
+            watt_up
+        )
+    )
 
-    # Wind
-    w_eff = wind_component_ms(wind_speed, wind_angle)
+    # 3) Physikalische Geschwindigkeit (analytisch)
+    #    v = P / (F_roll + F_grav + F_aero)
+    #    Wir lösen das ohne Iteration:
+    #    v_rel = v + wind
+    #    Näherung: aero dominiert → quadratische Lösung
 
-    # 3) Physikalische Iteration (12 Schritte)
-    for _ in range(12):
-        v_rel = v + w_eff
+    w = wind_component_ms(wind_speed, wind_angle)
 
-        F_aero = 0.5 * air_density * c_dA * v_rel * abs(v_rel)
-        F_roll = weight_total * g_const * c_rr
-        F_grav = weight_total * g_const * (gradient / 100.0)
+    # Kräfte
+    F_roll = weight_total * g_const * c_rr
+    F_grav = weight_total * g_const * (gradients / 100.0)
 
-        F_total = F_aero + F_roll + F_grav
+    # Quadratische Lösung für Luftwiderstand:
+    # P = (F_roll + F_grav) * v + 0.5 * rho * CdA * (v + w)^3
+    # Näherung: wir ignorieren w im Kubikterm für Geschwindigkeitsschätzung
+    A = 0.5 * air_density * c_dA
+    B = F_roll + F_grav
 
-        if F_total <= 0:
-            break
+    # Näherungslösung: v ≈ (P / B) für kleine v, sonst (P/A)^(1/3)
+    v_phys = np.where(
+        P / np.maximum(B, 1e-6) < 8,
+        P / np.maximum(B, 1e-6),
+        (P / A) ** (1/3)
+    )
 
-        v = P / F_total
+    v_phys *= 3.6  # m/s → km/h
 
-    v_phys = v * 3.6
-
-    # 4) Hybrid-Regel:
-    #    - Physik darf Zielgeschwindigkeit NICHT unterschreiten
-    #    - Physik darf Zielgeschwindigkeit NICHT überschreiten
-    #    - Abfahrtslimit bleibt bestehen
-    # Physik bestimmt die Geschwindigkeit
-    v_final = v_phys
-    
-    # Zielgeschwindigkeit ist nur ein Minimum
-    v_final = max(v_final, v_target * 0.7)
-    
-    # Abfahrtslimit bleibt
-    v_final = min(v_final, max_downhill_speed)
-
-    v_final = min(v_final, max_downhill_speed)
+    # 4) Hybrid-Regel C2
+    v_final = np.maximum(v_phys, v_target * 0.7)
+    v_final = np.minimum(v_final, max_downhill_speed)
 
     return v_final
+
 
 
 
@@ -320,6 +321,33 @@ if st.sidebar.button("Pause hinzufügen"):
 st.sidebar.subheader("Kontrollpunkt hinzufügen")
 control_dist = st.sidebar.number_input("Kontrollpunkt bei km", min_value=0.0, value=0.0, step=1.0)
 control_pause = st.sidebar.number_input("Pause am Kontrollpunkt (min)", min_value=0, max_value=180, value=0)
+
+# Name Kontroll- und Pausenpunkt
+st.sidebar.header("🛑 Kontrollpunkte")
+
+num_controls = st.sidebar.number_input("Anzahl Kontrollpunkte", 0, 20, 0)
+
+control_points = []
+for i in range(num_controls):
+    st.sidebar.subheader(f"Kontrollpunkt {i+1}")
+    name = st.sidebar.text_input(f"Name KP {i+1}", key=f"cp_name_{i}")
+    km = st.sidebar.number_input(f"Distanz (km) KP {i+1}", 0.0, 2000.0, 0.0, key=f"cp_km_{i}")
+    pause = st.sidebar.number_input(f"Pause (min) KP {i+1}", 0, 180, 0, key=f"cp_pause_{i}")
+    control_points.append({"name": name, "km": km, "pause": pause})
+
+
+st.sidebar.header("⏸ Pausenpunkte")
+
+num_pauses = st.sidebar.number_input("Anzahl Pausenpunkte", 0, 20, 0)
+
+pause_points = []
+for i in range(num_pauses):
+    st.sidebar.subheader(f"Pausenpunkt {i+1}")
+    name = st.sidebar.text_input(f"Name Pause {i+1}", key=f"pp_name_{i}")
+    km = st.sidebar.number_input(f"Distanz (km) Pause {i+1}", 0.0, 2000.0, 0.0, key=f"pp_km_{i}")
+    pause = st.sidebar.number_input(f"Pause (min) Pause {i+1}", 0, 180, 0, key=f"pp_pause_{i}")
+    pause_points.append({"name": name, "km": km, "pause": pause})
+
 
 if st.sidebar.button("Kontrollpunkt hinzufügen"):
     if control_dist == 0:
