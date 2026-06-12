@@ -202,12 +202,38 @@ def segment_power(gradient: float) -> float:
 # REALISTISCHES SPEED-MODELL MIT PHYSIK, WIND & FTP
 # ---------------------------------------------------------
 def compute_speed(gradient: float) -> float:
-    base = base_speed_from_gradient(gradient)
-    P = segment_power(gradient)
+    # 1) Zielgeschwindigkeit nach Steigung (Sidebar)
+    if gradient < -3:
+        v_target = target_speed_down
+    elif gradient < -1:
+        v_target = target_speed_light_down
+    elif gradient < 1:
+        v_target = target_speed_flat
+    elif gradient < 3:
+        v_target = target_speed_light_up
+    elif gradient < 6:
+        v_target = target_speed_med_up
+    elif gradient < 10:
+        v_target = target_speed_steep_up
+    else:
+        v_target = target_speed_very_steep_up
+
+    # 2) Physikalische Geschwindigkeit aus Leistung
+    #    (nutzt deine Watt flach / bergauf / bergab)
+    if gradient < -1:
+        P = watt_down
+    elif gradient <= 1:
+        P = watt_flat
+    else:
+        P = watt_up
+
+    # Startwert für Iteration
+    v = max(v_target / 3.6, min_speed / 3.6)
+
+    # Wind
     w_eff = wind_component_ms(wind_speed, wind_angle)
 
-    v = max(base / 3.6, min_speed / 3.6)
-
+    # 3) Physikalische Iteration (12 Schritte)
     for _ in range(12):
         v_rel = v + w_eff
 
@@ -217,18 +243,22 @@ def compute_speed(gradient: float) -> float:
 
         F_total = F_aero + F_roll + F_grav
 
-        if F_total <= 0 or math.isnan(F_total) or math.isinf(F_total):
+        if F_total <= 0:
             break
 
         v = P / F_total
 
-    v_kmh = v * 3.6
+    v_phys = v * 3.6
 
-    v_kmh = max(v_kmh, min_speed)
-    if gradient < 0:
-        v_kmh = min(v_kmh, max_downhill_speed)
+    # 4) Hybrid-Regel:
+    #    - Physik darf Zielgeschwindigkeit NICHT unterschreiten
+    #    - Physik darf Zielgeschwindigkeit NICHT überschreiten
+    #    - Abfahrtslimit bleibt bestehen
+    v_final = max(v_phys, v_target)
+    v_final = min(v_final, max_downhill_speed)
 
-    return v_kmh
+    return v_final
+
 
 
 # ---------------------------------------------------------
