@@ -122,26 +122,25 @@ def compute_speed(df, params):
     # 1) Zielgeschwindigkeit aus Sidebar
     # -----------------------------------------
     v_target = np.select(
-        [
-            g < -0.03,
-            g < -0.01,
-            g < 0.01,
-            g < 0.03,
-            g < 0.06,
-            g < 0.10
-        ],
-        [
-            params["spd_down"],
-            params["spd_ldown"],
-            params["spd_flat"],
-            params["spd_lup"],
-            params["spd_mup"],
-            params["spd_sup"]
-            params["hybrid_factor"],
+    [
+        g < -0.03,
+        g < -0.01,
+        g < 0.01,
+        g < 0.03,
+        g < 0.06,
+        g < 0.10
+    ],
+    [
+        params["spd_down"],
+        params["spd_ldown"],
+        params["spd_flat"],
+        params["spd_lup"],
+        params["spd_mup"],
+        params["spd_sup"],
+    ],
+    default=params["spd_vs_up"]
+)
 
-        ],
-        default=params["spd_vs_up"]
-    )
 
     # -----------------------------------------
     # 2) FTP-basierte Leistung
