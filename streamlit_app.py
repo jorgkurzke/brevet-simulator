@@ -137,6 +137,8 @@ def compute_speed(df, params):
             params["spd_lup"],
             params["spd_mup"],
             params["spd_sup"]
+            params["hybrid_factor"]
+
         ],
         default=params["spd_vs_up"]
     )
@@ -190,7 +192,7 @@ def compute_speed(df, params):
     # 5) Hybrid-Regel
     # -----------------------------------------
     # Zieltempo dominiert leicht (Faktor 0.85)
-    v_final = np.maximum(v_phys, v_target * 0.85)
+    v_final = np.maximum(v_phys, v_target * hybrid_factor)
 
     # Limits
     v_final = np.maximum(v_final, params["min_spd"])
@@ -420,14 +422,30 @@ min_spd = st.sidebar.number_input("Min. Geschwindigkeit (km/h)", 3.0, 15.0, 6.0)
 # -----------------------------------------------------
 # SIDEBAR – Zielgeschwindigkeiten
 # -----------------------------------------------------
-st.sidebar.header("Zielgeschwindigkeiten")
-spd_down = st.sidebar.number_input("Bergab", 20.0, 80.0, 50.0)
-spd_ldown = st.sidebar.number_input("Leicht bergab", 20.0, 60.0, 40.0)
-spd_flat = st.sidebar.number_input("Flach", 15.0, 40.0, 28.0)
-spd_lup = st.sidebar.number_input("Leicht bergauf", 10.0, 35.0, 24.0)
-spd_mup = st.sidebar.number_input("Mittel bergauf", 8.0, 30.0, 20.0)
-spd_sup = st.sidebar.number_input("Steil bergauf", 5.0, 25.0, 15.0)
-spd_vs_up = st.sidebar.number_input("Sehr steil", 3.0, 20.0, 10.0)
+st.sidebar.header("Zielgeschwindigkeiten (automatisch aus FTP, aber überschreibbar)")
+
+# Auto-Vorschläge aus FTP
+auto_flat  = round(ftp * 0.11)   # ~ FTP * 0.11 → 28 km/h bei FTP=250
+auto_lup   = round(ftp * 0.09)
+auto_mup   = round(ftp * 0.075)
+auto_sup   = round(ftp * 0.055)
+auto_vs_up = round(ftp * 0.04)
+auto_ldown = round(ftp * 0.13)
+auto_down  = round(ftp * 0.15)
+
+spd_down  = st.sidebar.number_input("Bergab", 10.0, 90.0, auto_down)
+spd_ldown = st.sidebar.number_input("Leicht bergab", 10.0, 70.0, auto_ldown)
+spd_flat  = st.sidebar.number_input("Flach", 10.0, 50.0, auto_flat)
+spd_lup   = st.sidebar.number_input("Leicht bergauf", 5.0, 40.0, auto_lup)
+spd_mup   = st.sidebar.number_input("Mittel bergauf", 5.0, 35.0, auto_mup)
+spd_sup   = st.sidebar.number_input("Steil bergauf", 3.0, 30.0, auto_sup)
+spd_vs_up = st.sidebar.number_input("Sehr steil", 2.0, 25.0, auto_vs_up)
+
+# Hybrid-Faktor (0.5 = Physik dominiert, 1.0 = Zieltempo dominiert)
+hybrid_factor = st.sidebar.slider(
+    "Hybrid-Faktor (Zieltempo vs. Physik)",
+    0.5, 1.2, 0.85, 0.01
+)
 
 # -----------------------------------------------------
 # SIDEBAR – Leistung
@@ -517,6 +535,8 @@ if uploaded:
         "w_up": w_up,
         "w_down": w_down,
         "ftp": ftp
+        "hybrid_factor": hybrid_factor,
+
 
     }
 
