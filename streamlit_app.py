@@ -46,6 +46,25 @@ debug_flag = st.sidebar.checkbox("Debug-Panel anzeigen", value=False)
 
 air_density = 1.226
 g_const = 9.81
+# ---------------------------------------------------------
+# LEISTUNGSPROFILE & ZIELGESCHWINDIGKEITEN
+# ---------------------------------------------------------
+st.sidebar.header("🚴 Leistungsprofile")
+
+# Wattvorgaben
+watt_flat = st.sidebar.number_input("Watt flach [W]", 50, 500, 200, 5)
+watt_up = st.sidebar.number_input("Watt bergauf [W]", 50, 500, 240, 5)
+watt_down = st.sidebar.number_input("Watt bergab [W]", 50, 500, 160, 5)
+
+st.sidebar.header("🎯 Zielgeschwindigkeiten nach Steigung")
+
+target_speed_down = st.sidebar.number_input("Abfahrt (< -3%) [km/h]", 10.0, 120.0, 55.0, 1.0)
+target_speed_light_down = st.sidebar.number_input("Leicht bergab (-3% bis -1%) [km/h]", 10.0, 80.0, 40.0, 1.0)
+target_speed_flat = st.sidebar.number_input("Flach (-1% bis +1%) [km/h]", 10.0, 60.0, 30.0, 1.0)
+target_speed_light_up = st.sidebar.number_input("Leicht bergauf (1% bis 3%) [km/h]", 5.0, 40.0, 22.0, 1.0)
+target_speed_med_up = st.sidebar.number_input("Mittel bergauf (3% bis 6%) [km/h]", 5.0, 30.0, 16.0, 1.0)
+target_speed_steep_up = st.sidebar.number_input("Steil bergauf (6% bis 10%) [km/h]", 3.0, 20.0, 12.0, 1.0)
+target_speed_very_steep_up = st.sidebar.number_input("Sehr steil (> 10%) [km/h]", 2.0, 15.0, 8.0, 1.0)
 
 # ---------------------------------------------------------
 # GPX-UPLOAD
