@@ -203,6 +203,22 @@ def compute_speed(df, params):
 # -----------------------------------------------------
 # TIME PROFILE
 # -----------------------------------------------------
+# -----------------------------------------------------
+# DISTANZ BERECHNEN (Meter)
+# -----------------------------------------------------
+# -----------------------------------------------------
+# DISTANZ BERECHNEN (Meter)
+# -----------------------------------------------------
+def compute_distance(df):
+    dist = [0.0]
+    for i in range(1, len(df)):
+        lat1, lon1 = df.loc[i-1, "lat"], df.loc[i-1, "lon"]
+        lat2, lon2 = df.loc[i, "lat"], df.loc[i, "lon"]
+        d = haversine(lat1, lon1, lat2, lon2)
+        dist.append(dist[-1] + d)
+    return np.array(dist)
+    
+    
 def add_time_profile(df, params):
     df["speed_kmh"] = compute_speed(df, params)
 
