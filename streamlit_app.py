@@ -11,12 +11,12 @@ from fpdf import FPDF
 # -----------------------------------------------------
 # Konstanten
 # -----------------------------------------------------
-g_const = 9.81
-air_density = 1.226  # kg/m³
+G = 9.81
+AIR_DENSITY = 1.226  # kg/m³
 
 
 # -----------------------------------------------------
-# GPX-PARSER
+# GPX-PARSER (robust, ohne inplace+method)
 # -----------------------------------------------------
 def parse_gpx(file) -> pd.DataFrame:
     gpx = gpxpy.parse(file)
@@ -31,7 +31,7 @@ def parse_gpx(file) -> pd.DataFrame:
 
     for track in gpx.tracks:
         for segment in track.segments:
-            if len(segment.points) == 0:
+            if not segment.points:
                 continue
 
             for point in segment.points:
@@ -67,16 +67,14 @@ def parse_gpx(file) -> pd.DataFrame:
     df["elev"] = pd.to_numeric(df["elev"], errors="coerce")
     df["distance_m"] = pd.to_numeric(df["distance_m"], errors="coerce")
 
-    df["lat"].fillna(method="ffill", inplace=True)
-    df["lon"].fillna(method="ffill", inplace=True)
+    df["lat"] = df["lat"].ffill()
+    df["lon"] = df["lon"].ffill()
 
     if df["elev"].isna().all():
         df["elev"] = 0.0
-    df["elev"].fillna(method="ffill", inplace=True)
-    df["elev"].fillna(method="bfill", inplace=True)
+    df["elev"] = df["elev"].ffill().bfill()
 
-    df["distance_m"].fillna(method="ffill", inplace=True)
-    df["distance_m"].fillna(0.0, inplace=True)
+    df["distance_m"] = df["distance_m"].ffill().fillna(0.0)
 
     df["gradient"] = 0.0
     for i in range(1, len(df)):
@@ -122,9 +120,9 @@ def compute_acp_times(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, row in df.iterrows():
         km = row["distance_m"] / 1000.0
-        open_t = acp_time(km, max_speeds)
-        close_t = acp_time(km, min_speeds)
-        rows.append({"km": km, "open_s": open_t, "close_s": close_t})
+        open_s = acp_time(km, max_speeds)
+        close_s = acp_time(km, min_speeds)
+        rows.append({"km": km, "open_s": open_s, "close_s": close_s})
 
     return pd.DataFrame(rows)
 
@@ -160,7 +158,7 @@ def compute_speed_vectorized(
     max_downhill_speed,
     min_speed,
 ):
-    gradients = np.array(gradients)
+    gradients = np.array(gradients, dtype=float)
 
     # Zielgeschwindigkeit nach Steigung
     v_target = np.where(
@@ -194,17 +192,16 @@ def compute_speed_vectorized(
         gradients < -1,
         watt_down,
         np.where(gradients <= 1, watt_flat, watt_up),
-    )
+    ).astype(float)
 
     w = wind_component_ms(wind_speed, wind_angle)
 
-    F_roll = weight_total * g_const * c_rr
-    F_grav = weight_total * g_const * (gradients / 100.0)
+    F_roll = weight_total * G * c_rr
+    F_grav = weight_total * G * (gradients / 100.0)
 
-    A = 0.5 * air_density * c_dA
+    A = 0.5 * AIR_DENSITY * c_dA
     B = F_roll + F_grav
 
-    # Näherung: zwei Regime
     v_est1 = P / np.maximum(B, 1e-6)
     v_est2 = (P / np.maximum(A, 1e-6)) ** (1.0 / 3.0)
 
@@ -265,7 +262,7 @@ def add_time_profile(
 
     df["speed_kmh"] = speeds
 
-    dist_m = df["distance_m"].diff().fillna(0).values
+    dist_m = df["distance_m"].diff().fillna(0.0).values
     dist_km = dist_m / 1000.0
 
     hours = dist_km / np.maximum(speeds, 0.1)
@@ -292,15 +289,13 @@ def smooth_speed(df: pd.DataFrame, window: int = 21) -> pd.DataFrame:
 
 
 # -----------------------------------------------------
-# PDF-EXPORT
+# PDF-EXPORT (robust, ohne TTF-Zwang)
 # -----------------------------------------------------
 def export_pdf(df_acp: pd.DataFrame, start_time: dt.datetime) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", size=10)
+    pdf.set_font("Arial", size=10)
 
     pdf.cell(0, 10, "Brevet Simulation – ACP Kontrollzeiten", ln=True)
 
@@ -313,7 +308,9 @@ def export_pdf(df_acp: pd.DataFrame, start_time: dt.datetime) -> bytes:
         close_t = start_time + dt.timedelta(seconds=close_s)
 
         line = f"KM {km:5.1f}: Open {open_t} – Close {close_t}"
-        pdf.multi_cell(0, 8, line)
+        # Nicht-latin1-Zeichen entfernen
+        safe_line = line.encode("latin1", errors="ignore").decode("latin1", errors="ignore")
+        pdf.multi_cell(0, 8, safe_line)
 
     return pdf.output(dest="S").encode("latin1", errors="ignore")
 
@@ -412,14 +409,14 @@ if uploaded_file is not None:
 
     df = smooth_speed(df, window=21)
 
-    st.subheader("Streckenprofil")
-    st.line_chart(df[["distance_m", "elev"]].set_index("distance_m"))
+    st.subheader("Streckenprofil (Höhe)")
+    st.line_chart(df.set_index("distance_m")["elev"])
 
     st.subheader("Geschwindigkeit")
     if "speed_kmh_smooth" in df.columns:
-        st.line_chart(df[["distance_m", "speed_kmh_smooth"]].set_index("distance_m"))
+        st.line_chart(df.set_index("distance_m")["speed_kmh_smooth"])
     else:
-        st.line_chart(df[["distance_m", "speed_kmh"]].set_index("distance_m"))
+        st.line_chart(df.set_index("distance_m")["speed_kmh"])
 
     st.subheader("ACP-Zeiten (Auszug)")
     df_acp_view = df_acp.copy()
@@ -438,9 +435,9 @@ if uploaded_file is not None:
         file_name="brevet_acp_zeiten.pdf",
         mime="application/pdf",
     )
-
 else:
     st.info("Bitte eine GPX-Datei hochladen.")
+
 
 
 
