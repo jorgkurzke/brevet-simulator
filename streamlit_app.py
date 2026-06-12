@@ -286,10 +286,26 @@ def add_time_profile(df: pd.DataFrame):
 
         g = df.gradient.iloc[i]
         v_kmh = compute_speed(g)
-        v_ms = max(v_kmh / 3.6, 0.1)
+        # Geschwindigkeit in m/s
+v_ms = v_kmh / 3.6
 
-        dt = dist / v_ms
-        new_time = times[-1] + dt
+# Schutz: Geschwindigkeit darf niemals 0 oder negativ sein
+if v_ms <= 0 or math.isnan(v_ms) or math.isinf(v_ms):
+    v_ms = min_speed / 3.6
+
+# Zeitdifferenz
+dt = dist / v_ms
+
+# Schutz: dt darf niemals negativ oder unendlich sein
+if dt < 0 or math.isnan(dt) or math.isinf(dt):
+    dt = 0
+
+new_time = times[-1] + dt
+
+# Schutz: Zeit darf niemals rückwärts laufen
+if new_time < times[-1]:
+    new_time = times[-1]
+
 
         km_now = df.distance_m.iloc[i] / 1000.0
 
