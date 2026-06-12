@@ -419,6 +419,24 @@ max_down = st.sidebar.number_input("Max. Abfahrt (km/h)", 20.0, 100.0, 70.0)
 min_spd = st.sidebar.number_input("Min. Geschwindigkeit (km/h)", 3.0, 15.0, 6.0)
 
 # -----------------------------------------------------
+# SIDEBAR – Leistung / FTP
+# -----------------------------------------------------
+st.sidebar.header("Leistung / FTP")
+
+ftp = st.sidebar.number_input("FTP (Watt)", 100, 450, 250)
+
+# Auto-Leistung aus FTP
+st.sidebar.caption("Leistung automatisch aus FTP berechnet:")
+
+w_flat = int(ftp * 0.75)
+w_up   = int(ftp * 0.90)
+w_down = int(ftp * 0.50)
+
+st.sidebar.write(f"Flach: {w_flat} W")
+st.sidebar.write(f"Bergauf: {w_up} W")
+st.sidebar.write(f"Bergab: {w_down} W")
+
+# -----------------------------------------------------
 # SIDEBAR – Zielgeschwindigkeiten
 # -----------------------------------------------------
 st.sidebar.header("Zielgeschwindigkeiten (automatisch aus FTP, aber überschreibbar)")
@@ -445,23 +463,6 @@ hybrid_factor = st.sidebar.slider(
     "Hybrid-Faktor (Zieltempo vs. Physik)",
     0.5, 1.2, 0.85, 0.01
 )
-
-# -----------------------------------------------------
-# SIDEBAR – Leistung
-# -----------------------------------------------------
-st.sidebar.header("Leistung")
-# FTP
-ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 250)
-# Auto-Leistung aus FTP
-st.sidebar.caption("Leistung automatisch aus FTP berechnet:")
-
-w_flat = int(ftp * 0.75)   # 75% FTP
-w_up   = int(ftp * 0.90)   # 90% FTP
-w_down = int(ftp * 0.50)   # 50% FTP
-
-st.sidebar.write(f"Flach: {w_flat} W")
-st.sidebar.write(f"Bergauf: {w_up} W")
-st.sidebar.write(f"Bergab: {w_down} W")
 
 
 # -----------------------------------------------------
