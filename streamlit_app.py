@@ -396,9 +396,17 @@ spd_vs_up = st.sidebar.number_input("Sehr steil", 3.0, 20.0, 10.0)
 st.sidebar.header("Leistung")
 # FTP
 ftp = st.sidebar.number_input("FTP (Watt)", 100, 400, 250)
-w_flat = st.sidebar.number_input("Watt flach", 80, 400, 200)
-w_up = st.sidebar.number_input("Watt bergauf", 80, 450, 230)
-w_down = st.sidebar.number_input("Watt bergab", 0, 400, 150)
+# Auto-Leistung aus FTP
+st.sidebar.caption("Leistung automatisch aus FTP berechnet:")
+
+w_flat = int(ftp * 0.75)   # 75% FTP
+w_up   = int(ftp * 0.90)   # 90% FTP
+w_down = int(ftp * 0.50)   # 50% FTP
+
+st.sidebar.write(f"Flach: {w_flat} W")
+st.sidebar.write(f"Bergauf: {w_up} W")
+st.sidebar.write(f"Bergab: {w_down} W")
+
 
 # -----------------------------------------------------
 # SIDEBAR – Startzeit
@@ -468,7 +476,9 @@ if uploaded:
         "spd_vs_up": spd_vs_up,
         "w_flat": w_flat,
         "w_up": w_up,
-        "w_down": w_down
+        "w_down": w_down,
+        "ftp": ftp
+
     }
 
     # Zeitprofil berechnen
