@@ -607,14 +607,8 @@ else:
     pdf.add_page()
     
     # WICHTIG: UTF-8 Schrift laden
-    from fpdf import FPDF, HTMLMixin
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
 
-    class PDF(FPDF, HTMLMixin):
-        pass
-    
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=10)
 
     pdf.set_font("DejaVu", size=10)
     
@@ -624,7 +618,7 @@ else:
         line = f"KM {row['km']}: Open {row['open']} – Close {row['close']}"
         pdf.multi_cell(0, 8, line)
     
-    pdf_buffer = pdf.output(dest="S").encode("latin1", errors="ignore")
+    pdf_buffer = pdf.output(dest="S").encode("utf-8")
     
     st.download_button(
         label="📄 PDF exportieren",
