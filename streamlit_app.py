@@ -599,25 +599,30 @@ else:
     # -----------------------------------------------------
     # PDF EXPORT
     # -----------------------------------------------------
+    # -----------------------------------------------------
+    # PDF EXPORT (UTF-8 fähig)
+    # -----------------------------------------------------
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Arial", size=10)
+    
+    # WICHTIG: UTF-8 Schrift laden
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=10)
+    
     pdf.cell(0, 10, "Brevet Simulation – ACP Kontrollzeiten", ln=True)
-
+    
     for idx, row in df_acp.iterrows():
-        pdf.cell(
-            0,
-            8,
-            f"KM {row['km']}: Open {row['open']} – Close {row['close']}",
-            ln=True
-        )
-
-    pdf_buffer = pdf.output(dest="S").encode("latin1")
-
+        line = f"KM {row['km']}: Open {row['open']} – Close {row['close']}"
+        pdf.multi_cell(0, 8, line)
+    
+    pdf_buffer = pdf.output(dest="S").encode("utf-8")
+    
     st.download_button(
         label="📄 PDF exportieren",
         data=pdf_buffer,
-        file_name="brevet_simulation_b7_1.pdf",
+        file_name="brevet_simulation.pdf",
         mime="application/pdf"
     )
+
 
