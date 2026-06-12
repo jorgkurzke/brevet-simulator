@@ -422,6 +422,9 @@ def add_time_profile(df):
     # Geschwindigkeiten vektorisieren
     speeds = compute_speed_vectorized(df["gradient"].values)  # km/h
 
+    # WICHTIG: Geschwindigkeiten speichern
+    df["speed_kmh"] = speeds
+
     # Zeit pro Segment
     dist_m = df["distance_m"].diff().fillna(0).values  # Meter
     dist_km = dist_m / 1000.0
@@ -436,6 +439,7 @@ def add_time_profile(df):
     df_acp = compute_acp_times(df)
 
     return df, df_acp
+
 
 
 
