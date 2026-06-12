@@ -278,6 +278,86 @@ def export_pdf(df):
 
     return pdf.output(dest="S").encode("utf-8")
 # -----------------------------------------------------
+# FOLIUM MAP (schnell, 1 PolyLine + Colormap)
+# -----------------------------------------------------
+def build_map(df, control_points, pause_points):
+    m = folium.Map(
+        location=[df["lat"].iloc[0], df["lon"].iloc[0]],
+        zoom_start=12
+    )
+
+    colormap = cm.LinearColormap(
+        colors=["green", "yellow", "orange", "red"],
+        vmin=df["gradient"].min(),
+        vmax=df["gradient"].max()
+    )
+
+    # Eine einzige schnelle PolyLine
+    folium.PolyLine(
+        df[["lat", "lon"]].values,
+        color="blue",
+        weight=4,
+        opacity=0.8
+    ).add_to(m)
+
+    colormap.add_to(m)
+
+    # Start
+    folium.Marker(
+        [df["lat"].iloc[0], df["lon"].iloc[0]],
+        popup="Start",
+        icon=folium.Icon(color="green")
+    ).add_to(m)
+
+    # Ziel
+    folium.Marker(
+        [df["lat"].iloc[-1], df["lon"].iloc[-1]],
+        popup="Ziel",
+        icon=folium.Icon(color="red")
+    ).add_to(m)
+
+    # Kontrollpunkte
+    for cp in control_points:
+        idx = (df["distance_m"] / 1000 - cp["km"]).abs().idxmin()
+        folium.Marker(
+            [df["lat"].iloc[idx], df["lon"].iloc[idx]],
+            popup=f"KP: {cp['name']}",
+            icon=folium.Icon(color="blue")
+        ).add_to(m)
+
+    # Pausenpunkte
+    for pp in pause_points:
+        idx = (df["distance_m"] / 1000 - pp["km"]).abs().idxmin()
+        folium.Marker(
+            [df["lat"].iloc[idx], df["lon"].iloc[idx]],
+            popup=f"Pause: {pp['name']}",
+            icon=folium.Icon(color="orange")
+        ).add_to(m)
+
+    return m
+
+
+# -----------------------------------------------------
+# HÖHENPROFIL (Plotly)
+# -----------------------------------------------------
+def plot_elevation(df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["distance_m"] / 1000,
+        y=df["elev"],
+        mode="lines",
+        line=dict(color="firebrick", width=2)
+    ))
+    fig.update_layout(
+        title="Höhenprofil",
+        xaxis_title="Kilometer",
+        yaxis_title="Höhe (m)",
+        height=300,
+        margin=dict(l=40, r=20, t=40, b=40)
+    )
+    return fig
+
+# -----------------------------------------------------
 # TIME PROFILE
 # -----------------------------------------------------
 def add_time_profile(df, params):
