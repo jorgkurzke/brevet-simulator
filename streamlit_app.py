@@ -333,17 +333,7 @@ def wind_component(wind_speed_kmh, wind_angle_deg):
 # REALISTISCHES SPEED-MODELL MIT WIND & PHYSIK
 # ---------------------------------------------------------
 def compute_speed(gradient):
-    """
-    Liefert realistische Fahrgeschwindigkeit [km/h] für gegebene Steigung [%]
-    unter Berücksichtigung von:
-    - FTP (Leistung)
-    - Luftwiderstand (CdA, Luftdichte)
-    - Rollwiderstand
-    - Steigung
-    - Windgeschwindigkeit & -winkel
-    """
-
-    # 1. Basisgeschwindigkeit aus Steigung (als Startwert)
+    # Basisgeschwindigkeit aus Steigung
     g = gradient
 
     if g < -3:
@@ -361,45 +351,23 @@ def compute_speed(gradient):
     else:
         base = target_speed_very_steep_up
 
-    # Leistung aus FTP
-    P = ftp
+    # FTP‑Skalierung – deutlich spürbar
+    v = base * (ftp / 220.0) ** 0.3   # km/h
 
-    # Windkomponente in Fahrtrichtung
-    w_eff = wind_component(wind_speed, wind_angle)
+    # Windkomponente in Fahrtrichtung (0° Rückenwind, 180° Gegenwind)
+    w = wind_speed / 3.6 * math.cos(math.radians(wind_angle))  # m/s
 
-    # Startwert für numerische Lösung (m/s)
-    v = max(base / 3.6, min_speed / 3.6)
+    # einfache, aber spürbare Windanpassung
+    v_ms = v / 3.6 - 0.3 * w          # m/s
+    v_kmh = v_ms * 3.6
 
-    # Iterative Lösung der Gleichung P = F_total * v
-    for _ in range(12):
-        # relative Luftgeschwindigkeit
-        v_rel = v - w_eff
-
-        # Aerodynamischer Widerstand (quadratisch)
-        F_aero = 0.5 * rho * cda * v_rel * abs(v_rel)
-
-        # Rollwiderstand
-        F_roll = mass * g_const * crr
-
-        # Steigungsanteil
-        F_grav = mass * g_const * (gradient / 100.0)
-
-        # Gesamtwiderstand
-        F_total = F_aero + F_roll + F_grav
-
-        if F_total <= 0:
-            break
-
-        # neue Geschwindigkeit aus P = F_total * v
-        v = P / F_total
-
-    v_kmh = v * 3.6
-
-    # Limits
+    # Mindest- und Maximalgeschwindigkeit
+    v_kmh = max(v_kmh, min_speed)
     if gradient < 0:
         v_kmh = min(v_kmh, max_downhill_speed)
 
-    return max(v_kmh, min_speed)
+    return v_kmh
+
 
 
 # ---------------------------------------------------------
