@@ -1,4 +1,4 @@
-# B.7.18 – Brevet Simulator (schnell, mit Höhenprofil, ohne Edge-Müll)
+# B.7.19 – Brevet Simulator (5-Blöcke-Version, sauber, schnell)
 
 import math
 import datetime as dt
@@ -15,7 +15,6 @@ import branca.colormap as cm
 
 G = 9.81
 AIR = 1.226
-
 
 # -----------------------------------------------------
 # GPX PARSER (ohne Cache)
@@ -63,7 +62,6 @@ def parse_gpx(file):
 
     return df
 
-
 # -----------------------------------------------------
 # DOWNSAMPLING (10× schneller)
 # -----------------------------------------------------
@@ -72,8 +70,6 @@ def downsample(df, n=1500):
         return df
     idx = np.linspace(0, len(df)-1, n).astype(int)
     return df.iloc[idx].reset_index(drop=True)
-
-
 # -----------------------------------------------------
 # ACP TIMES
 # -----------------------------------------------------
@@ -116,6 +112,7 @@ def wind_component(w, ang):
 def compute_speed(df, params):
     g = df["gradient"].values
 
+    # Zielgeschwindigkeit nach Steigung
     v_t = np.select(
         [
             g < -3,
@@ -136,18 +133,21 @@ def compute_speed(df, params):
         default=params["spd_vs_up"]
     )
 
+    # Leistung nach Steigung
     P = np.select(
         [g < -1, g <= 1],
         [params["w_down"], params["w_flat"]],
         default=params["w_up"]
     )
 
+    # Kräfte
     w = wind_component(params["wind"], params["wind_ang"])
     F_roll = params["weight"] * G * params["crr"]
     F_grav = params["weight"] * G * (g / 100)
     A = 0.5 * AIR * params["cda"]
     B = F_roll + F_grav
 
+    # Geschwindigkeit aus Leistung
     v1 = P / np.maximum(B, 1e-6)
     v2 = (P / np.maximum(A, 1e-6)) ** (1/3)
 
@@ -155,12 +155,11 @@ def compute_speed(df, params):
     v = np.maximum(v, params["min_spd"] / 3.6)
     v = v * 3.6
 
+    # Zielgeschwindigkeit berücksichtigen
     v = np.maximum(v, v_t * 0.7)
     v = np.minimum(v, params["max_down"])
 
     return v
-
-
 # -----------------------------------------------------
 # TIME PROFILE
 # -----------------------------------------------------
@@ -185,12 +184,27 @@ def build_summary(df, control_points, pause_points, start_dt, df_acp):
     pts.append({"km": 0.0, "name": "Start", "type": "Start", "pause": 0})
 
     for cp in control_points:
-        pts.append({"km": cp["km"], "name": cp["name"], "type": "Kontrollpunkt", "pause": cp["pause"]})
+        pts.append({
+            "km": cp["km"],
+            "name": cp["name"],
+            "type": "Kontrollpunkt",
+            "pause": cp["pause"]
+        })
 
     for pp in pause_points:
-        pts.append({"km": pp["km"], "name": pp["name"], "type": "Pause", "pause": pp["pause"]})
+        pts.append({
+            "km": pp["km"],
+            "name": pp["name"],
+            "type": "Pause",
+            "pause": pp["pause"]
+        })
 
-    pts.append({"km": df["distance_m"].iloc[-1] / 1000, "name": "Ziel", "type": "Ziel", "pause": 0})
+    pts.append({
+        "km": df["distance_m"].iloc[-1] / 1000,
+        "name": "Ziel",
+        "type": "Ziel",
+        "pause": 0
+    })
 
     pts = sorted(pts, key=lambda x: x["km"])
 
@@ -263,89 +277,138 @@ def export_pdf(df):
         pdf.multi_cell(0, 6, line)
 
     return pdf.output(dest="S").encode("utf-8")
+# -----------------------------------------------------
+# TIME PROFILE
+# -----------------------------------------------------
+def add_time_profile(df, params):
+    df["speed_kmh"] = compute_speed(df, params)
+
+    dist_km = df["distance_m"].diff().fillna(0) / 1000
+    hours = dist_km / np.maximum(df["speed_kmh"], 0.1)
+    df["segment_seconds"] = hours * 3600
+    df["cum_seconds"] = df["segment_seconds"].cumsum()
+
+    df_acp = compute_acp_times(df)
+    return df, df_acp
 
 
 # -----------------------------------------------------
-# FOLIUM MAP (schnell, 1 PolyLine + Colormap)
+# SUMMARY TABLE
 # -----------------------------------------------------
-def build_map(df, control_points, pause_points):
-    m = folium.Map(location=[df["lat"].iloc[0], df["lon"].iloc[0]], zoom_start=12)
+def build_summary(df, control_points, pause_points, start_dt, df_acp):
+    pts = []
 
-    colormap = cm.LinearColormap(
-        colors=["green", "yellow", "orange", "red"],
-        vmin=df["gradient"].min(),
-        vmax=df["gradient"].max()
-    )
-
-    folium.PolyLine(
-        df[["lat", "lon"]].values,
-        color="blue",
-        weight=4,
-        opacity=0.8
-    ).add_to(m)
-
-    colormap.add_to(m)
-
-    folium.Marker(
-        [df["lat"].iloc[0], df["lon"].iloc[0]],
-        popup="Start",
-        icon=folium.Icon(color="green")
-    ).add_to(m)
-
-    folium.Marker(
-        [df["lat"].iloc[-1], df["lon"].iloc[-1]],
-        popup="Ziel",
-        icon=folium.Icon(color="red")
-    ).add_to(m)
+    pts.append({"km": 0.0, "name": "Start", "type": "Start", "pause": 0})
 
     for cp in control_points:
-        idx = (df["distance_m"] / 1000 - cp["km"]).abs().idxmin()
-        folium.Marker(
-            [df["lat"].iloc[idx], df["lon"].iloc[idx]],
-            popup=f"KP: {cp['name']}",
-            icon=folium.Icon(color="blue")
-        ).add_to(m)
+        pts.append({
+            "km": cp["km"],
+            "name": cp["name"],
+            "type": "Kontrollpunkt",
+            "pause": cp["pause"]
+        })
 
     for pp in pause_points:
-        idx = (df["distance_m"] / 1000 - pp["km"]).abs().idxmin()
-        folium.Marker(
-            [df["lat"].iloc[idx], df["lon"].iloc[idx]],
-            popup=f"Pause: {pp['name']}",
-            icon=folium.Icon(color="orange")
-        ).add_to(m)
+        pts.append({
+            "km": pp["km"],
+            "name": pp["name"],
+            "type": "Pause",
+            "pause": pp["pause"]
+        })
 
-    return m
+    pts.append({
+        "km": df["distance_m"].iloc[-1] / 1000,
+        "name": "Ziel",
+        "type": "Ziel",
+        "pause": 0
+    })
+
+    pts = sorted(pts, key=lambda x: x["km"])
+
+    rows = []
+    last_km = 0
+    last_time = 0
+    last_elev = df["elev"].iloc[0]
+
+    for p in pts:
+        km = p["km"]
+        idx = (df["distance_m"] / 1000 - km).abs().idxmin()
+
+        elev = df["elev"].iloc[idx]
+        cum_t = df["cum_seconds"].iloc[idx]
+
+        seg_km = km - last_km
+        seg_t = cum_t - last_time
+        seg_hm = elev - last_elev
+
+        rows.append({
+            "Typ": p["type"],
+            "Name": p["name"],
+            "KM": km,
+            "KM Abschnitt": seg_km,
+            "HM Abschnitt": seg_hm,
+            "HM gesamt": elev - df["elev"].iloc[0],
+            "Zeit Abschnitt": dt.timedelta(seconds=int(seg_t)),
+            "Zeit gesamt": dt.timedelta(seconds=int(cum_t)),
+            "Ø Abschnitt": (seg_km / (seg_t / 3600)) if seg_t > 0 else 0,
+            "Ø gesamt": (km / (cum_t / 3600)) if cum_t > 0 else 0,
+            "Pause (min)": p["pause"],
+            "ACP Open": df_acp.loc[idx, "open_s"],
+            "ACP Close": df_acp.loc[idx, "close_s"]
+        })
+
+        last_km = km
+        last_time = cum_t
+        last_elev = elev
+
+    return pd.DataFrame(rows)
 
 
 # -----------------------------------------------------
-# HÖHENPROFIL (Plotly)
+# EXCEL EXPORT
 # -----------------------------------------------------
-def plot_elevation(df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["distance_m"] / 1000,
-        y=df["elev"],
-        mode="lines",
-        line=dict(color="firebrick", width=2)
-    ))
-    fig.update_layout(
-        title="Höhenprofil",
-        xaxis_title="Kilometer",
-        yaxis_title="Höhe (m)",
-        height=300
-    )
-    return fig
+def export_excel(df):
+    import io
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
+        df.to_excel(w, index=False, sheet_name="Zusammenfassung")
+    return buf.getvalue()
 
 
 # -----------------------------------------------------
-# STREAMLIT UI
+# PDF EXPORT (UTF‑8)
+# -----------------------------------------------------
+def export_pdf(df):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=9)
+
+    pdf.cell(0, 10, "Brevet Zusammenfassung", ln=True)
+
+    for _, r in df.iterrows():
+        line = (
+            f"{r['Typ']} – {r['Name']} – KM {r['KM']:.1f} – "
+            f"Zeit gesamt {r['Zeit gesamt']}"
+        )
+        pdf.multi_cell(0, 6, line)
+
+    return pdf.output(dest="S").encode("utf-8")
+# -----------------------------------------------------
+# STREAMLIT UI (Hauptprogramm)
 # -----------------------------------------------------
 st.set_page_config(page_title="Brevet Simulator", layout="wide")
-st.title("Brevet Simulator B.7.18")
+st.title("Brevet Simulator B.7.19")
 
+# -----------------------------
+# Sidebar – Fahrer & Rad
+# -----------------------------
 st.sidebar.header("Fahrer & Rad")
 weight = st.sidebar.number_input("Gesamtgewicht (kg)", 50.0, 150.0, 85.0)
 
+# -----------------------------
+# Sidebar – Physik
+# -----------------------------
 st.sidebar.header("Physik")
 cda = st.sidebar.number_input("CdA", 0.15, 0.5, 0.28)
 crr = st.sidebar.number_input("Crr", 0.002, 0.01, 0.004)
@@ -354,6 +417,9 @@ wind_ang = st.sidebar.number_input("Windwinkel (°)", -180.0, 180.0, 0.0)
 max_down = st.sidebar.number_input("Max. Abfahrt (km/h)", 20.0, 100.0, 70.0)
 min_spd = st.sidebar.number_input("Min. Geschwindigkeit (km/h)", 3.0, 15.0, 6.0)
 
+# -----------------------------
+# Sidebar – Zielgeschwindigkeiten
+# -----------------------------
 st.sidebar.header("Zielgeschwindigkeiten")
 spd_down = st.sidebar.number_input("Bergab", 20.0, 80.0, 50.0)
 spd_ldown = st.sidebar.number_input("Leicht bergab", 20.0, 60.0, 40.0)
@@ -363,16 +429,25 @@ spd_mup = st.sidebar.number_input("Mittel bergauf", 8.0, 30.0, 20.0)
 spd_sup = st.sidebar.number_input("Steil bergauf", 5.0, 25.0, 15.0)
 spd_vs_up = st.sidebar.number_input("Sehr steil", 3.0, 20.0, 10.0)
 
+# -----------------------------
+# Sidebar – Leistung
+# -----------------------------
 st.sidebar.header("Leistung")
 w_flat = st.sidebar.number_input("Watt flach", 80, 400, 200)
 w_up = st.sidebar.number_input("Watt bergauf", 80, 450, 230)
 w_down = st.sidebar.number_input("Watt bergab", 0, 400, 150)
 
+# -----------------------------
+# Sidebar – Startzeit
+# -----------------------------
 st.sidebar.header("Startzeit")
 start_date = st.sidebar.date_input("Datum", dt.date.today())
 start_time = st.sidebar.time_input("Zeit", dt.time(6, 0))
 start_dt = dt.datetime.combine(start_date, start_time)
 
+# -----------------------------
+# Sidebar – Kontrollpunkte
+# -----------------------------
 st.sidebar.header("Kontrollpunkte")
 n_cp = st.sidebar.number_input("Anzahl KP", 0, 20, 0)
 control_points = []
@@ -382,6 +457,9 @@ for i in range(n_cp):
     pause = st.sidebar.number_input(f"KP {i+1} Pause (min)", 0, 180, 0, key=f"cpp{i}")
     control_points.append({"name": name, "km": km, "pause": pause})
 
+# -----------------------------
+# Sidebar – Pausenpunkte
+# -----------------------------
 st.sidebar.header("Pausenpunkte")
 n_pp = st.sidebar.number_input("Anzahl Pausen", 0, 20, 0)
 pause_points = []
@@ -391,6 +469,9 @@ for i in range(n_pp):
     pause = st.sidebar.number_input(f"Pause {i+1} Dauer (min)", 0, 180, 0, key=f"ppp{i}")
     pause_points.append({"name": name, "km": km, "pause": pause})
 
+# -----------------------------
+# GPX Upload
+# -----------------------------
 uploaded = st.file_uploader("GPX-Datei hochladen", type=["gpx"])
 
 if uploaded:
@@ -419,22 +500,26 @@ if uploaded:
 
     df, df_acp = add_time_profile(df, params)
 
+    # Gesamtzeit
     total_seconds = df["cum_seconds"].iloc[-1]
     total_time = dt.timedelta(seconds=int(total_seconds))
-
     st.metric("Gesamtzeit", str(total_time))
 
+    # Höhenprofil
     st.subheader("Höhenprofil")
     st.plotly_chart(plot_elevation(df), use_container_width=True)
 
+    # Karte
     st.subheader("Karte")
     m = build_map(df, control_points, pause_points)
     st_folium(m, width=900, height=600)
 
+    # Zusammenfassung
     st.subheader("Zusammenfassung")
     summary = build_summary(df, control_points, pause_points, start_dt, df_acp)
     st.dataframe(summary)
 
+    # Downloads
     st.download_button(
         "📄 Zusammenfassung als Excel",
         data=export_excel(summary),
@@ -443,7 +528,12 @@ if uploaded:
 
     st.download_button(
         "📄 Zusammenfassung als PDF",
+        data=export_pdf(summary),
+        file_name="brevet_zusammenfassung.pdf"
+    )
 
+else:
+    st.info("Bitte GPX-Datei hochladen.")
 
 
 
