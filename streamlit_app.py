@@ -112,41 +112,68 @@ def wind_component(w, ang):
 # -----------------------------------------------------
 # FTP-basiertes Speed-Modell (C4-Hybrid)
 # -----------------------------------------------------
+# -----------------------------------------------------
+# HYBRID C5: Zielgeschwindigkeit + FTP-Physik
+# -----------------------------------------------------
 def compute_speed(df, params):
     g = df["gradient"].values / 100.0  # Steigung in Dezimalform
 
-    # Leistung aus FTP ableiten
-    # flach = 75%, bergauf = 90%, bergab = 50%
+    # -----------------------------------------
+    # 1) Zielgeschwindigkeit aus Sidebar
+    # -----------------------------------------
+    v_target = np.select(
+        [
+            g < -0.03,
+            g < -0.01,
+            g < 0.01,
+            g < 0.03,
+            g < 0.06,
+            g < 0.10
+        ],
+        [
+            params["spd_down"],
+            params["spd_ldown"],
+            params["spd_flat"],
+            params["spd_lup"],
+            params["spd_mup"],
+            params["spd_sup"]
+        ],
+        default=params["spd_vs_up"]
+    )
+
+    # -----------------------------------------
+    # 2) FTP-basierte Leistung
+    # -----------------------------------------
     P_flat = params["ftp"] * 0.75
     P_up   = params["ftp"] * 0.90
     P_down = params["ftp"] * 0.50
 
-    # Leistung je nach Steigung
     P = np.select(
         [g < -0.01, g <= 0.01],
         [P_down, P_flat],
         default=P_up
     )
 
-    # Physikalische Kräfte
-    w = wind_component(params["wind"], params["wind_ang"])  # Gegenwind positiv
-    v_air = lambda v: (v / 3.6) + w                         # relative Luftgeschwindigkeit
+    # -----------------------------------------
+    # 3) Physikalische Kräfte
+    # -----------------------------------------
+    w = wind_component(params["wind"], params["wind_ang"])
+    v_air = lambda v: (v / 3.6) + w
 
     F_roll = params["weight"] * G * params["crr"]
     F_grav = params["weight"] * G * g
     A = 0.5 * AIR * params["cda"]
 
-    # Geschwindigkeit aus Leistung berechnen
-    v = np.zeros(len(df))
+    v_phys = np.zeros(len(df))
 
+    # -----------------------------------------
+    # 4) Physikgeschwindigkeit numerisch lösen
+    # -----------------------------------------
     for i in range(len(df)):
-        # Kraftgleichung: P = v * (F_roll + F_grav + 0.5*rho*CdA*v_air^2)
-        # numerisch lösen
         def f(v_ms):
             return v_ms * (F_roll + F_grav[i] + A * v_air(v_ms*3.6)**2) - P[i]
 
-        # einfache Newton-Iteration
-        v_ms = 5.0  # Startwert
+        v_ms = 6.0  # Startwert
         for _ in range(12):
             dv = 0.1
             f1 = f(v_ms)
@@ -157,13 +184,20 @@ def compute_speed(df, params):
             v_ms = v_ms - f1 / slope
             v_ms = max(v_ms, 0.1)
 
-        v[i] = v_ms * 3.6  # m/s → km/h
+        v_phys[i] = v_ms * 3.6
+
+    # -----------------------------------------
+    # 5) Hybrid-Regel
+    # -----------------------------------------
+    # Zieltempo dominiert leicht (Faktor 0.85)
+    v_final = np.maximum(v_phys, v_target * 0.85)
 
     # Limits
-    v = np.maximum(v, params["min_spd"])
-    v = np.minimum(v, params["max_down"])
+    v_final = np.maximum(v_final, params["min_spd"])
+    v_final = np.minimum(v_final, params["max_down"])
 
-    return v
+    return v_final
+
 
 # -----------------------------------------------------
 # TIME PROFILE
