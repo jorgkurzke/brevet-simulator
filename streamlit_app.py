@@ -376,67 +376,25 @@ def acp_open_close(dist_km):
 # ---------------------------------------------------------
 # ZEITPROFIL MIT STABILEN ZEITEN & km-0-FIX
 # ---------------------------------------------------------
-def add_time_profile(df: pd.DataFrame):
-    times = [0.0]
-    speeds = [min_speed]
+def add_time_profile(df):
+    # Geschwindigkeiten vektorisieren
+    speeds = compute_speed_vectorized(df["gradient"].values)  # km/h
 
-    pauses = [p for p in st.session_state["pauses"] if p["km"] > 0]
-    controls = [c for c in st.session_state["controls"] if c["km"] > 0]
+    # Zeit pro Segment
+    dist_m = df["distance_m"].diff().fillna(0).values  # Meter
+    dist_km = dist_m / 1000.0
 
-    for i in range(1, len(df)):
-        dist = df.distance_m.iloc[i] - df.distance_m.iloc[i - 1]
+    hours = dist_km / np.maximum(speeds, 0.1)
+    seconds = hours * 3600
 
-        if dist <= 0 or math.isnan(dist) or math.isinf(dist):
-            times.append(times[-1])
-            speeds.append(speeds[-1])
-            continue
+    df["segment_seconds"] = seconds
+    df["cum_seconds"] = df["segment_seconds"].cumsum()
 
-        g = df.gradient.iloc[i]
-        v_kmh = compute_speed(g)
-        v_ms = v_kmh / 3.6
-
-        if v_ms <= 0 or math.isnan(v_ms) or math.isinf(v_ms):
-            v_ms = min_speed / 3.6
-
-        dt = dist / v_ms
-
-        if dt < 0 or math.isnan(dt) or math.isinf(dt):
-            dt = 0.0
-
-        new_time = times[-1] + dt
-
-        if new_time < times[-1]:
-            new_time = times[-1]
-
-        km_now = df.distance_m.iloc[i] / 1000.0
-
-        for p in pauses:
-            if abs(km_now - p["km"]) < 0.05:
-                new_time += p["pause_min"] * 60
-
-        for c in controls:
-            if abs(km_now - c["km"]) < 0.05:
-                new_time += c["pause_min"] * 60
-
-        times.append(new_time)
-        speeds.append(v_kmh)
-
-    df["speed_kmh"] = speeds
-    df["time_s"] = times
-    df["sim_time"] = [start_datetime + timedelta(seconds=float(t)) for t in times]
-
-    acp_list = []
-    for c in controls:
-        open_t, close_t = acp_open_close(c["km"])
-        acp_list.append({
-            "km": c["km"],
-            "open": start_datetime + open_t,
-            "close": start_datetime + close_t
-        })
-
-    df_acp = pd.DataFrame(acp_list)
+    # ACP‑Zeiten
+    df_acp = compute_acp_times(df)
 
     return df, df_acp
+
 
 
 # ---------------------------------------------------------
