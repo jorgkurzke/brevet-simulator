@@ -607,7 +607,15 @@ else:
     pdf.add_page()
     
     # WICHTIG: UTF-8 Schrift laden
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
+    from fpdf import FPDF, HTMLMixin
+
+    class PDF(FPDF, HTMLMixin):
+        pass
+    
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=10)
+
     pdf.set_font("DejaVu", size=10)
     
     pdf.cell(0, 10, "Brevet Simulation – ACP Kontrollzeiten", ln=True)
@@ -616,7 +624,7 @@ else:
         line = f"KM {row['km']}: Open {row['open']} – Close {row['close']}"
         pdf.multi_cell(0, 8, line)
     
-    pdf_buffer = pdf.output(dest="S").encode("utf-8")
+    pdf_buffer = pdf.output(dest="S").encode("latin1", errors="ignore")
     
     st.download_button(
         label="📄 PDF exportieren",
