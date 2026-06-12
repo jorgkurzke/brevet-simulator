@@ -286,27 +286,66 @@ def add_distance_and_gradient(df):
     return df
 
 # ---------------------------------------------------------
-# Wind Effekt
+# PHYSIK-PARAMETER
 # ---------------------------------------------------------
+rho = 1.226          # Luftdichte [kg/m³]
+cda = 0.32           # Stirnfläche * Cd (Rennradfahrer)
+crr = 0.004          # Rollwiderstand
+mass = 85.0          # Fahrer + Rad [kg]
+g_const = 9.81       # Erdbeschleunigung [m/s²]
 
-def wind_effect(wind_speed_kmh, wind_angle_deg):
-    # Windgeschwindigkeit in m/s
+
+# ---------------------------------------------------------
+# SIDEBAR – LEISTUNG & WIND
+# ---------------------------------------------------------
+ftp = st.sidebar.number_input("FTP [W]", min_value=100, max_value=400, value=220, step=10)
+wind_speed = st.sidebar.number_input("Windgeschwindigkeit [km/h]", min_value=0.0, max_value=80.0, value=0.0, step=1.0)
+wind_angle = st.sidebar.slider("Windwinkel [°] (0° Rückenwind, 180° Gegenwind)", min_value=0, max_value=180, value=0)
+
+min_speed = st.sidebar.number_input("Mindestgeschwindigkeit [km/h]", min_value=5.0, max_value=25.0, value=8.0, step=0.5)
+max_downhill_speed = st.sidebar.number_input("Max. Abfahrtsgeschwindigkeit [km/h]", min_value=30.0, max_value=90.0, value=60.0, step=1.0)
+
+# Zielgeschwindigkeiten je Steigung (nur als Basis, Wind & Physik passen sie an)
+target_speed_down = st.sidebar.number_input("Zielspeed Abfahrt (< -3%) [km/h]",  min_value=20.0, max_value=80.0, value=40.0, step=1.0)
+target_speed_light_down = st.sidebar.number_input("Zielspeed leicht bergab (-3 bis -1%) [km/h]",  min_value=20.0, max_value=60.0, value=32.0, step=1.0)
+target_speed_flat = st.sidebar.number_input("Zielspeed flach (-1 bis +1%) [km/h]",  min_value=15.0, max_value=40.0, value=28.0, step=1.0)
+target_speed_light_up = st.sidebar.number_input("Zielspeed leicht bergauf (1 bis 3%) [km/h]",  min_value=10.0, max_value=35.0, value=24.0, step=1.0)
+target_speed_med_up = st.sidebar.number_input("Zielspeed mittel bergauf (3 bis 6%) [km/h]",  min_value=8.0, max_value=30.0, value=20.0, step=1.0)
+target_speed_steep_up = st.sidebar.number_input("Zielspeed steil bergauf (6 bis 10%) [km/h]",  min_value=6.0, max_value=25.0, value=16.0, step=1.0)
+target_speed_very_steep_up = st.sidebar.number_input("Zielspeed sehr steil (> 10%) [km/h]",  min_value=5.0, max_value=20.0, value=12.0, step=1.0)
+
+
+# ---------------------------------------------------------
+# WINDKOMPONENTE IN FAHRRICHTUNG
+# ---------------------------------------------------------
+def wind_component(wind_speed_kmh, wind_angle_deg):
+    """
+    0°  = Rückenwind (Wind von hinten, schiebt)
+    90° = Seitenwind (kein Einfluss auf Vortrieb)
+    180°= Gegenwind (Wind von vorne, bremst)
+    """
     w = wind_speed_kmh / 3.6
-
-    # 0° = Rückenwind, 180° = Gegenwind
     angle = math.radians(wind_angle_deg)
-
-    # Effektive Windkomponente in Fahrtrichtung
     return w * math.cos(angle)
 
 
 # ---------------------------------------------------------
-# SPEED MODEL (Version B.2)
+# REALISTISCHES SPEED-MODELL MIT WIND & PHYSIK
 # ---------------------------------------------------------
 def compute_speed(gradient):
+    """
+    Liefert realistische Fahrgeschwindigkeit [km/h] für gegebene Steigung [%]
+    unter Berücksichtigung von:
+    - FTP (Leistung)
+    - Luftwiderstand (CdA, Luftdichte)
+    - Rollwiderstand
+    - Steigung
+    - Windgeschwindigkeit & -winkel
+    """
+
+    # 1. Basisgeschwindigkeit aus Steigung (als Startwert)
     g = gradient
 
-    # 1. Basisgeschwindigkeit aus Steigung
     if g < -3:
         base = target_speed_down
     elif -3 <= g < -1:
@@ -322,56 +361,90 @@ def compute_speed(gradient):
     else:
         base = target_speed_very_steep_up
 
-    # 2. FTP‑Skalierung
-    v0 = base * (ftp / 220) ** 0.15   # km/h
+    # Leistung aus FTP
+    P = ftp
 
-    # 3. Windkomponente (m/s)
-    w_eff = wind_effect(wind_speed, wind_angle)
+    # Windkomponente in Fahrtrichtung
+    w_eff = wind_component(wind_speed, wind_angle)
 
-    # 4. Geschwindigkeit in m/s
-    v_ms = v0 / 3.6
+    # Startwert für numerische Lösung (m/s)
+    v = max(base / 3.6, min_speed / 3.6)
 
-    # 5. Aerodynamische Anpassung
-    # Gegenwind → langsamer, Rückenwind → schneller
-    v_ms = v_ms - w_eff
+    # Iterative Lösung der Gleichung P = F_total * v
+    for _ in range(12):
+        # relative Luftgeschwindigkeit
+        v_rel = v - w_eff
 
-    # 6. Mindestgeschwindigkeit
-    v_ms = max(v_ms, min_speed / 3.6)
+        # Aerodynamischer Widerstand (quadratisch)
+        F_aero = 0.5 * rho * cda * v_rel * abs(v_rel)
 
-    # 7. Abfahrtslimit
-    if g < 0:
-        v_ms = min(v_ms, max_downhill_speed / 3.6)
+        # Rollwiderstand
+        F_roll = mass * g_const * crr
 
-    return v_ms * 3.6
+        # Steigungsanteil
+        F_grav = mass * g_const * (gradient / 100.0)
 
+        # Gesamtwiderstand
+        F_total = F_aero + F_roll + F_grav
 
+        if F_total <= 0:
+            break
+
+        # neue Geschwindigkeit aus P = F_total * v
+        v = P / F_total
+
+    v_kmh = v * 3.6
+
+    # Limits
+    if gradient < 0:
+        v_kmh = min(v_kmh, max_downhill_speed)
+
+    return max(v_kmh, min_speed)
 
 
 # ---------------------------------------------------------
-# ZEITPROFIL
+# ZEITPROFIL MIT PHYSIK-SPEED
 # ---------------------------------------------------------
 def add_time_profile(df):
+    """
+    Berechnet:
+    - speed_kmh: physikalisch + Wind
+    - time_s: kumulierte Zeit [s]
+    - sim_time: absolute Zeit basierend auf Startzeit
+    """
+
     times = [0.0]
-    speeds = [0.0]
+    speeds = [min_speed]
 
     for i in range(1, len(df)):
-        dist = df.distance_m[i] - df.distance_m[i-1]
+        dist = df.distance_m.iloc[i] - df.distance_m.iloc[i - 1]
+
         if dist <= 0:
             times.append(times[-1])
             speeds.append(speeds[-1])
             continue
 
-        v_kmh = compute_speed(df.gradient[i])
+        g = df.gradient.iloc[i]
+        v_kmh = compute_speed(g)
         v_ms = v_kmh / 3.6
-        dt = dist / v_ms
 
+        dt = dist / v_ms
         times.append(times[-1] + dt)
         speeds.append(v_kmh)
 
     df["speed_kmh"] = speeds
     df["time_s"] = times
+
+    # Startzeit aus Sidebar (mit Session-State stabilisiert, wie du es schon eingebaut hast)
+    start_datetime = datetime.combine(
+        st.session_state["start_date"],
+        st.session_state["start_time"]
+    )
+
     df["sim_time"] = [start_datetime + timedelta(seconds=t) for t in times]
+
     return df
+
     
 
 
