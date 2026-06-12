@@ -137,7 +137,7 @@ def compute_speed(df, params):
             params["spd_lup"],
             params["spd_mup"],
             params["spd_sup"]
-            params["hybrid_factor"]
+            params["hybrid_factor"],
 
         ],
         default=params["spd_vs_up"]
