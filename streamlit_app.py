@@ -442,6 +442,12 @@ if uploaded:
 
     # Downsampling (10× schneller)
     df = downsample(df_raw, 1500)
+    # Gradient-Fix für Folium/Branca
+    df["gradient"] = df["gradient"].replace([np.inf, -np.inf], np.nan)
+    df["gradient"] = df["gradient"].fillna(0)
+    
+    # Extremwerte kappen (GPX-Sprünge)
+    df["gradient"] = df["gradient"].clip(-30, 30)
 
     # Parameter-Bundle
     params = {
