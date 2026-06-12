@@ -107,37 +107,10 @@ def wind_component(w, ang):
 
 
 # -----------------------------------------------------
-# SPEED MODEL (Hybrid C2, vektorisiert)
-# -----------------------------------------------------
-# -----------------------------------------------------
-# FTP-basiertes Speed-Modell (C4-Hybrid)
-# -----------------------------------------------------
-# -----------------------------------------------------
-# HYBRID C5: Zielgeschwindigkeit + FTP-Physik
-# -----------------------------------------------------
-# -----------------------------------------------------
-# STEIGUNG / GRADIENT BERECHNEN (%)
-# -----------------------------------------------------
-def compute_gradient(df):
-    elev = df["elev"].values
-    dist = df["distance_m"].values
-
-    grad = np.zeros(len(df))
-    for i in range(1, len(df)):
-        dh = elev[i] - elev[i-1]
-        dx = dist[i] - dist[i-1]
-        if dx > 0:
-            grad[i] = (dh / dx) * 100
-        else:
-            grad[i] = 0
-    return grad
-
-
-# -----------------------------------------------------
 # HAVERSINE (Meter)
 # -----------------------------------------------------
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Erdradius in Metern
+    R = 6371000
     phi1 = np.radians(lat1)
     phi2 = np.radians(lat2)
     dphi = np.radians(lat2 - lat1)
@@ -145,6 +118,8 @@ def haversine(lat1, lon1, lat2, lon2):
 
     a = np.sin(dphi/2)**2 + np.cos(phi1)*np.cos(phi2)*np.sin(dlambda/2)**2
     return 2 * R * np.arcsin(np.sqrt(a))
+
+
 # -----------------------------------------------------
 # DISTANZ BERECHNEN (Meter)
 # -----------------------------------------------------
@@ -156,6 +131,22 @@ def compute_distance(df):
         d = haversine(lat1, lon1, lat2, lon2)
         dist.append(dist[-1] + d)
     return np.array(dist)
+
+
+# -----------------------------------------------------
+# STEIGUNG / GRADIENT (%)
+# -----------------------------------------------------
+def compute_gradient(df):
+    elev = df["elev"].values
+    dist = df["distance_m"].values
+
+    grad = np.zeros(len(df))
+    for i in range(1, len(df)):
+        dh = elev[i] - elev[i-1]
+        dx = dist[i] - dist[i-1]
+        grad[i] = (dh / dx) * 100 if dx > 0 else 0
+    return grad
+
 # -----------------------------------------------------
 # GESCHWINDIGKEIT BERECHNEN (Hybrid: Physik + Zieltempo)
 # -----------------------------------------------------
@@ -169,7 +160,6 @@ def compute_speed(df, params):
     max_down = params["max_down"]
     min_spd = params["min_spd"]
 
-    # Zielgeschwindigkeiten
     spd_down  = params["spd_down"]
     spd_ldown = params["spd_ldown"]
     spd_flat  = params["spd_flat"]
@@ -180,9 +170,8 @@ def compute_speed(df, params):
 
     hybrid = params["hybrid_factor"]
 
-    g = df["gradient"].values / 100.0  # z.B. 0.05 = 5%
+    g = df["gradient"].values / 100.0
 
-    # Zieltempo nach Steigung
     v_target = np.select(
         [
             g < -0.03,
@@ -203,7 +192,6 @@ def compute_speed(df, params):
         default=spd_vs_up
     )
 
-    # Physikalische Geschwindigkeit (vereinfachtes Modell)
     v_phys = np.zeros(len(df))
     for i in range(len(df)):
         slope = g[i]
@@ -215,23 +203,8 @@ def compute_speed(df, params):
             v = max(min_spd, spd_flat - slope * 200)
         v_phys[i] = v
 
-    # Hybrid
     v_final = np.maximum(v_phys, v_target * hybrid)
-
     return v_final
-
-    
-def add_time_profile(df, params):
-    df["speed_kmh"] = compute_speed(df, params)
-
-    dist_km = df["distance_m"].diff().fillna(0) / 1000
-    hours = dist_km / np.maximum(df["speed_kmh"], 0.1)
-    df["segment_seconds"] = hours * 3600
-    df["cum_seconds"] = df["segment_seconds"].cumsum()
-
-    df_acp = compute_acp_times(df)
-    return df, df_acp
-
 
 # -----------------------------------------------------
 # ZUSAMMENFASSUNG ERZEUGEN
@@ -515,6 +488,28 @@ hybrid_factor = st.sidebar.slider(
     0.5, 1.2, 0.85, 0.01
 )
 
+# -----------------------------------------------------
+# PARAMETER-BUNDLE (für compute_speed & Zeitmodell)
+# -----------------------------------------------------
+params = {
+    "weight": weight,
+    "cda": cda,
+    "crr": crr,
+    "wind": wind,
+    "wind_ang": wind_ang,
+    "max_down": max_down,
+    "min_spd": min_spd,
+
+    "spd_down": spd_down,
+    "spd_ldown": spd_ldown,
+    "spd_flat": spd_flat,
+    "spd_lup": spd_lup,
+    "spd_mup": spd_mup,
+    "spd_sup": spd_sup,
+    "spd_vs_up": spd_vs_up,
+
+    "hybrid_factor": hybrid_factor,
+}
 
 # -----------------------------------------------------
 # SIDEBAR – Startzeit
@@ -556,24 +551,20 @@ uploaded = st.file_uploader("GPX-Datei hochladen", type=["gpx"])
 if uploaded:
     # GPX einlesen
     df_raw = parse_gpx(uploaded)
-    
-    # Downsampling
+
     df = downsample(df_raw, 1500)
     
-    # Distanz berechnen
     df["distance_m"] = compute_distance(df)
     df["km"] = df["distance_m"] / 1000
     
-    # Gradient berechnen
     df["gradient"] = compute_gradient(df)
     df["gradient"] = df["gradient"].replace([np.inf, -np.inf], np.nan).fillna(0).clip(-30, 30)
     
-    # Geschwindigkeit berechnen
     df["speed_kmh"] = compute_speed(df, params)
     
-    # Zeitprofil berechnen
-    df["time_s"] = compute_time(df["speed_kmh"], df["km"])
+    df["time_s"] = df["distance_m"] / (df["speed_kmh"] * (1000/3600))
     df["cum_seconds"] = df["time_s"].cumsum()
+
     
     # ACP-Zeiten berechnen (falls benötigt)
     df, df_acp = add_time_profile(df, params)
